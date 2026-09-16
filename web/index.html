@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d1730">
+  <title>企业知识库 · AI 工作台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">KB</div>
+      <div class="brand-info">
+        <div class="brand-kicker">KNOWLEDGE WORKSPACE</div>
+        <div class="brand-title">企业知识库</div>
+        <div class="brand-sub">让每一份资料都可被理解</div>
+      </div>
+      <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="收起侧栏" aria-label="收起侧栏">收起</button>
+    </div>
+
+    <div class="collapsed-rail" aria-label="快捷操作">
+      <div class="rail-caption">快捷操作</div>
+      <button class="rail-action" type="button" data-rail-action="new" title="新建文档">新建文档</button>
+      <button class="rail-action" type="button" data-rail-action="upload" title="上传 Markdown 文档">上传文档</button>
+      <button class="rail-action" type="button" data-rail-action="sync" title="同步本地目录">同步目录</button>
+      <button class="rail-action" type="button" data-rail-action="ingest" title="重新索引全部文档">重建索引</button>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="主导航">
+      <div class="nav-item active"><span>知识工作台</span><small>当前</small></div>
+      <div class="nav-item"><span>智能问答</span><small>AI</small></div>
+    </nav>
+
+    <div class="sidebar-section">
+      <div class="section-heading">
+        <div>
+          <div class="section-label">文档库</div>
+          <div class="section-meta" id="doc-count">正在加载…</div>
+        </div>
+        <button id="new-btn" class="new-document-btn" type="button" title="新建文档">新建文档</button>
+      </div>
+
+      <div class="doc-tools">
+        <label class="search-box" for="doc-search">
+          <span class="search-label">搜索</span>
+          <input id="doc-search" type="search" placeholder="搜索文档" autocomplete="off">
+          <kbd>/</kbd>
+        </label>
+        <div class="sidebar-actions" aria-label="文档操作">
+          <button id="upload-btn" type="button" title="上传 Markdown 文档">上传</button>
+          <button id="sync-btn" type="button" title="同步本地目录">同步</button>
+          <button id="ingest-btn" type="button" title="重新索引全部文档">重建索引</button>
+        </div>
+      </div>
+
+      <div class="doc-list" id="doc-list"></div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="status-dot" aria-hidden="true"></div>
+      <div><strong>本地知识库</strong><span>已连接 · 索引服务正常</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="breadcrumb"><span>工作台</span><b>/</b><strong>知识问答</strong></div>
+      <div class="topbar-actions">
+        <span class="secure-badge"><i></i> 本地运行</span>
+        <button class="topbar-help" type="button" title="查看使用说明">使用说明</button>
+        <div class="workspace-user" title="当前工作区">本地</div>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="chat-panel" id="chat-panel">
+        <div class="panel-heading chat-heading">
+          <div class="panel-heading-copy">
+            <div class="panel-kicker">AI / 知识助手</div>
+            <div class="panel-title">在文档里找到答案</div>
+            <div class="panel-subtitle">基于你的文档回答，结论附带出处</div>
+          </div>
+          <span class="ready-pill"><i></i> 就绪</span>
+        </div>
+        <div class="messages" id="messages">
+          <div class="empty-hint">
+            <div class="hint-eyebrow"><i></i> 私有知识工作区</div>
+            <div class="hint-title">从你的知识库开始提问</div>
+            <p>我会检索相关文档，提炼重点，并附上可追溯的参考来源。</p>
+            <div class="suggestions" aria-label="推荐问题">
+              <button type="button" data-question="公司的请假流程是什么？"><span class="suggestion-number">01</span><span>公司的请假流程是什么？</span><b>使用问题</b></button>
+              <button type="button" data-question="报销需要哪些发票材料？"><span class="suggestion-number">02</span><span>报销需要哪些发票材料？</span><b>使用问题</b></button>
+            </div>
+          </div>
+        </div>
+        <div class="input-wrap">
+          <label class="sr-only" for="question">向知识库提问</label>
+          <div class="input-row">
+            <textarea id="question" rows="2" placeholder="询问知识库中的任何内容…"></textarea>
+            <button id="ask-btn" type="button" aria-label="发送问题"><span>发送问题</span><b>Enter</b></button>
+          </div>
+          <div class="input-meta"><span>回答仅基于当前文档库</span><span><kbd>Enter</kbd> 发送 · <kbd>Shift</kbd> + <kbd>Enter</kbd> 换行</span></div>
+        </div>
+      </section>
+
+      <div class="divider" id="divider" title="拖动调整宽度" aria-label="拖动调整左右区域宽度"></div>
+
+      <section class="viewer-panel">
+        <div class="viewer-toolbar" id="viewer-toolbar" style="display:none">
+          <div class="viewer-heading"><span class="file-badge">MD</span><span class="viewer-heading-copy"><span class="viewer-eyebrow">正在查看</span><span class="viewer-title" id="viewer-title"></span></span></div>
+          <div class="viewer-actions">
+            <button id="edit-btn" class="toolbar-btn" type="button">编辑文档</button>
+            <button id="delete-btn" class="toolbar-btn danger" type="button">删除文档</button>
+          </div>
+        </div>
+        <div class="viewer" id="viewer">
+          <div class="viewer-empty">
+            <div class="viewer-empty-label">文档预览</div>
+            <strong>选择一篇文档开始阅读</strong>
+            <span>从左侧选择文档，或先创建一篇 Markdown 文档。</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="modal-overlay" style="display:none">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <div><span class="modal-eyebrow">MARKDOWN DOCUMENT</span><span id="modal-title">新建文档</span></div>
+        <button class="modal-close" id="modal-close" type="button" aria-label="关闭">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-grid">
+          <label class="field"><span>标题</span><input type="text" id="doc-name" placeholder="文档标题，如：新员工手册"></label>
+          <label class="field"><span>目录（可选）</span><input type="text" id="doc-dir" placeholder="如：AI知识，留空则放根目录"></label>
+        </div>
+        <label class="field"><span>内容（Markdown）</span></label>
+        <div class="editor-shell">
+          <div class="editor-toolbar" id="editor-toolbar" role="toolbar" aria-label="Markdown 编辑工具栏">
+            <select id="heading-select" class="editor-select" title="标题层级" aria-label="标题层级">
+              <option value="">正文</option>
+              <option value="1">一级标题</option>
+              <option value="2">二级标题</option>
+              <option value="3">三级标题</option>
+              <option value="4">四级标题</option>
+              <option value="5">五级标题</option>
+              <option value="6">六级标题</option>
+            </select>
+            <span class="editor-divider"></span>
+            <button type="button" class="editor-tool strong" data-format="bold" title="粗体（Ctrl/Cmd + B）">粗体</button>
+            <button type="button" class="editor-tool italic" data-format="italic" title="斜体（Ctrl/Cmd + I）">斜体</button>
+            <button type="button" class="editor-tool strike" data-format="strike" title="删除线">删除线</button>
+            <button type="button" class="editor-tool" data-format="inline-code" title="行内代码">行内代码</button>
+            <span class="editor-divider"></span>
+            <button type="button" class="editor-tool" data-format="quote" title="引用">引用</button>
+            <button type="button" class="editor-tool" data-format="bullet" title="无序列表">无序列表</button>
+            <button type="button" class="editor-tool" data-format="ordered" title="有序列表">有序列表</button>
+            <button type="button" class="editor-tool" data-format="checklist" title="任务列表">任务列表</button>
+            <span class="editor-divider"></span>
+            <button type="button" class="editor-tool" data-format="code-block" title="代码块">代码块</button>
+            <button type="button" class="editor-tool" data-format="link" title="插入链接">链接</button>
+            <button type="button" class="editor-tool" data-format="table" title="插入表格">表格</button>
+            <button type="button" class="editor-tool" data-format="hr" title="分隔线">分隔线</button>
+            <span class="editor-toolbar-spacer"></span>
+            <button type="button" id="editor-preview-toggle" class="editor-mode-btn" title="切换预览">预览</button>
+          </div>
+          <div class="editor-surface">
+            <textarea id="doc-content" rows="16" placeholder="开始写作，或使用上方工具栏插入标题、代码、列表和表格…"></textarea>
+            <div id="doc-preview" class="editor-preview markdown" hidden></div>
+          </div>
+          <div class="editor-status"><span id="editor-mode-label">Markdown 源码</span><span><kbd>Ctrl</kbd> + <kbd>S</kbd> 保存</span></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-cancel" class="toolbar-btn" type="button">取消</button>
+        <button id="modal-save" class="primary-btn" type="button">保存文档</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" multiple accept=".md,.markdown" style="display:none">
+  <script src="/static/app.js"></script>
+</body>
+</html>

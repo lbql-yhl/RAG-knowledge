@@ -1,0 +1,16 @@
+.env
+data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Private knowledge-base documents: never publish these by default.
+/docs/*
+!/docs/README.md
+!/docs/examples/
+!/docs/examples/**
+
+# Local browser QA artifacts
+/docs/chrome-profile-*/
+/docs/ui-redesign-*.png
