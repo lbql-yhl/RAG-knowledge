@@ -76,3 +76,7 @@ docs/                可公开发布的示例 Markdown 文档
 web/                 前端页面
 .env.example         环境变量模板
 ```
+## 界面预览
+
+![AI Knowledge Base dashboard](assets/screenshots/knowledge-base-dashboard.png)
+
