@@ -31,6 +31,29 @@ const editorPreviewToggle = document.getElementById('editor-preview-toggle');
 const editorPreview = document.getElementById('doc-preview');
 const editorModeLabel = document.getElementById('editor-mode-label');
 const helpButton = document.querySelector('.topbar-help');
+const authGate = document.getElementById('auth-gate');
+const authForm = document.getElementById('auth-form');
+const authUsername = document.getElementById('auth-username');
+const authPassword = document.getElementById('auth-password');
+const authSubmit = document.getElementById('auth-submit');
+const authSwitch = document.getElementById('auth-switch');
+const authTitle = document.getElementById('auth-title');
+const authKicker = document.getElementById('auth-kicker');
+const authError = document.getElementById('auth-error');
+const userInitial = document.getElementById('user-initial');
+const userName = document.getElementById('user-name');
+const quotaBadge = document.getElementById('quota-badge');
+const quotaReminder = document.getElementById('quota-reminder');
+const adminButton = document.getElementById('admin-btn');
+const adminOverlay = document.getElementById('admin-overlay');
+const adminClose = document.getElementById('admin-close');
+const adminCancel = document.getElementById('admin-cancel');
+const adminRefresh = document.getElementById('admin-refresh');
+const adminUsersState = document.getElementById('admin-users-state');
+const adminUsersList = document.getElementById('admin-users-list');
+
+let currentUser = null;
+let authMode = 'login';
 
 let currentPath = null;
 let currentContent = '';
@@ -231,20 +254,178 @@ function renderTree(node, container) {
   });
 }
 
+function resizeQuestionInput() {
+  if (!questionInput) return;
+  questionInput.style.height = 'auto';
+  const maxHeight = parseFloat(getComputedStyle(questionInput).maxHeight) || 144;
+  const nextHeight = Math.min(Math.max(questionInput.scrollHeight, 48), maxHeight);
+  questionInput.style.height = `${nextHeight}px`;
+  questionInput.style.overflowY = questionInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
+}
+
 function addMessage(role, content) {
   const wrap = document.createElement('div');
   wrap.className = `msg ${role}`;
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  if (role === 'ai') {
-    bubble.innerHTML = content;
-  } else {
-    bubble.textContent = content;
-  }
+  if (role === 'ai') bubble.innerHTML = content;
+  else bubble.textContent = content;
   wrap.appendChild(bubble);
   messages.appendChild(wrap);
   messages.scrollTop = messages.scrollHeight;
   return bubble;
+}
+
+function updateQuota(quota) {
+  if (!quota) return;
+  const unlimited = Boolean(quota.unlimited);
+  const remaining = Number(quota.remaining) || 0;
+  const used = Number(quota.used) || 0;
+  const limit = Number(quota.limit) || 10;
+
+  if (quotaBadge) {
+    quotaBadge.innerHTML = unlimited
+      ? 'AI 咨询 <strong>无限制</strong>'
+      : `今日剩余 <strong>${remaining}</strong> 次`;
+    quotaBadge.title = unlimited
+      ? '管理员不受每日 AI 咨询次数限制'
+      : `今日已使用 ${used} / ${limit} 次`;
+    quotaBadge.hidden = false;
+  }
+
+  if (quotaReminder) {
+    quotaReminder.innerHTML = unlimited
+      ? '<span class="quota-reminder-label">AI 咨询额度</span><strong>无限制</strong>'
+      : `<span class="quota-reminder-label">今日 AI 咨询</span><strong>剩余 ${remaining} 次</strong>`;
+    quotaReminder.title = unlimited
+      ? '管理员不受每日 AI 咨询次数限制'
+      : `今日已使用 ${used} / ${limit} 次`;
+    quotaReminder.hidden = false;
+    quotaReminder.classList.toggle('is-depleted', !unlimited && remaining <= 0);
+  }
+}
+
+function setAdminState(message, isError = false) {
+  if (!adminUsersState) return;
+  adminUsersState.textContent = message || '';
+  adminUsersState.hidden = !message;
+  adminUsersState.classList.toggle('error', isError);
+}
+
+function renderAdminUsers(users) {
+  if (!adminUsersList) return;
+  if (!users.length) {
+    adminUsersList.innerHTML = '<div class="admin-empty">还没有注册用户。</div>';
+    return;
+  }
+  adminUsersList.innerHTML = users.map(user => {
+    const isAdmin = user.role === 'admin';
+    const quota = user.quota || {};
+    const quotaLabel = isAdmin || quota.unlimited ? '无限制' : `剩余 ${Number(quota.remaining) || 0} / ${quota.limit || 10} 次`;
+    const action = isAdmin
+      ? '<span class="admin-role">管理员</span>'
+      : `<button class="admin-reset-btn" type="button" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">重置今日额度</button>`;
+    return `<div class="admin-user-row"><div class="admin-user-main"><strong>${escapeHtml(user.username)}</strong><span>${quotaLabel}</span></div><div class="admin-user-action">${action}</div></div>`;
+  }).join('');
+  adminUsersList.querySelectorAll('.admin-reset-btn').forEach(button => {
+    button.addEventListener('click', () => resetUserQuota(button));
+  });
+}
+
+async function loadAdminUsers() {
+  setAdminState('正在加载用户…');
+  if (adminUsersList) adminUsersList.innerHTML = '';
+  try {
+    const resp = await fetch('/api/admin/users');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '加载用户失败');
+    setAdminState('');
+    renderAdminUsers(data.users || []);
+  } catch (error) {
+    setAdminState(error.message, true);
+  }
+}
+
+async function resetUserQuota(button) {
+  const userId = button.dataset.userId;
+  const username = button.dataset.username || '该用户';
+  if (!confirm(`确定重置 ${username} 今天的 AI 咨询额度吗？`)) return;
+  button.disabled = true;
+  try {
+    const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-quota`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '重置失败');
+    await loadAdminUsers();
+  } catch (error) {
+    setAdminState(error.message, true);
+    button.disabled = false;
+  }
+}
+
+function openAdminPanel() {
+  if (!adminOverlay || !currentUser || currentUser.role !== 'admin') return;
+  adminOverlay.style.display = 'flex';
+  loadAdminUsers();
+}
+
+function closeAdminPanel() {
+  if (adminOverlay) adminOverlay.style.display = 'none';
+}
+
+function attachFeedback(bubble, answerId) {
+  const box = document.createElement('div');
+  box.className = 'feedback';
+  box.innerHTML = '<span>这次回答有帮助吗？</span>';
+  const buttons = [];
+  let selected = 0;
+  for (let rating = 1; rating <= 5; rating += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '★';
+    button.title = `${rating} 星`;
+    button.setAttribute('aria-label', `${rating} 星`);
+    button.addEventListener('click', () => {
+      selected = rating;
+      buttons.forEach((item, index) => item.classList.toggle('selected', index < rating));
+      if (rating < 5) showReason();
+      else submitFeedback();
+    });
+    buttons.push(button);
+    box.appendChild(button);
+  }
+  const reasonWrap = document.createElement('div');
+  reasonWrap.className = 'feedback-reason';
+  reasonWrap.hidden = true;
+  reasonWrap.innerHTML = '<textarea placeholder="请说明哪里不满意（至少 10 个字符）"></textarea><small></small><button type="button">提交反馈</button>';
+  box.appendChild(reasonWrap);
+  const textarea = reasonWrap.querySelector('textarea');
+  const hint = reasonWrap.querySelector('small');
+  const submitButton = reasonWrap.querySelector('button');
+  function showReason() { reasonWrap.hidden = false; textarea.focus(); }
+  async function submitFeedback() {
+    const reason = textarea.value.trim();
+    if (selected < 5 && reason.length < 10) {
+      reasonWrap.hidden = false;
+      hint.textContent = '原因至少需要 10 个字符';
+      textarea.focus();
+      return;
+    }
+    buttons.forEach(button => { button.disabled = true; });
+    submitButton.disabled = true;
+    try {
+      const resp = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer_id: answerId, rating: selected, reason }) });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || '反馈提交失败');
+      box.classList.add('done');
+      box.innerHTML = selected < 5 ? '已收到反馈，后续回答会持续调整。' : '感谢评分，回答策略已记录。';
+    } catch (error) {
+      buttons.forEach(button => { button.disabled = false; });
+      submitButton.disabled = false;
+      hint.textContent = error.message;
+    }
+  }
+  submitButton.addEventListener('click', submitFeedback);
+  bubble.appendChild(box);
 }
 
 function clearEmptyHint() {
@@ -258,6 +439,7 @@ async function ask() {
   clearEmptyHint();
   addMessage('user', q);
   questionInput.value = '';
+  resizeQuestionInput();
   askBtn.disabled = true;
 
   const bubble = addMessage('ai', '<span class="loading"></span>');
@@ -285,6 +467,8 @@ async function ask() {
       html += '</div>';
     }
     bubble.innerHTML = html;
+    attachFeedback(bubble, data.answer_id);
+    updateQuota(data.quota);
     bubble.querySelectorAll('.source-chip').forEach(chip => {
       chip.addEventListener('click', () => openDoc(chip.dataset.path, null, chip.dataset.anchor));
     });
@@ -394,9 +578,11 @@ async function deleteDoc() {
 }
 
 askBtn.addEventListener('click', ask);
+questionInput.addEventListener('input', resizeQuestionInput);
 questionInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
 });
+resizeQuestionInput();
 
 ingestBtn.addEventListener('click', async () => {
   if (!confirm('确认重建索引？这会重新扫描并重建全部文档索引，可能需要一点时间。')) return;
@@ -555,7 +741,87 @@ document.querySelectorAll('[data-rail-action]').forEach(button => {
   });
 });
 
-loadDocs();
+function showAuthError(message) {
+  authError.textContent = message || '';
+  authError.hidden = !message;
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const registering = mode === 'register';
+  authKicker.textContent = registering ? 'CREATE YOUR SPACE' : 'WELCOME BACK';
+  authTitle.textContent = registering ? '注册知识库账号' : '登录 x公司知识库';
+  authSubmit.textContent = registering ? '注册并进入' : '登录并进入';
+  authSwitch.textContent = registering ? '已有账号？返回登录' : '还没有账号？注册一个';
+  authPassword.autocomplete = registering ? 'new-password' : 'current-password';
+  showAuthError('');
+}
+
+function updateRoleControls() {
+  const isAdmin = currentUser?.role === 'admin';
+  document.querySelectorAll('[data-admin-only]').forEach(control => {
+    control.hidden = !isAdmin;
+  });
+}
+
+function enterWorkspace(payload) {
+  currentUser = payload.user;
+  updateRoleControls();
+  userName.textContent = currentUser.username;
+  userInitial.textContent = currentUser.username.slice(0, 2).toUpperCase();
+  if (adminButton) adminButton.hidden = currentUser.role !== 'admin';
+  updateQuota(payload.quota);
+  authGate.style.display = 'none';
+  document.body.classList.remove('auth-locked');
+  loadDocs();
+}
+
+async function initAuth() {
+  try {
+    const resp = await fetch('/api/auth/me');
+    if (resp.ok) {
+      enterWorkspace(await resp.json());
+      return;
+    }
+  } catch (error) { /* show the login screen below */ }
+  authGate.style.display = 'flex';
+  document.body.classList.add('auth-locked');
+  authUsername.focus();
+}
+
+document.querySelector('.workspace-user')?.addEventListener('click', async () => {
+  if (!currentUser || !confirm('退出当前账号？')) return;
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.reload();
+});
+
+adminButton?.addEventListener('click', openAdminPanel);
+adminClose?.addEventListener('click', closeAdminPanel);
+adminCancel?.addEventListener('click', closeAdminPanel);
+adminRefresh?.addEventListener('click', loadAdminUsers);
+adminOverlay?.addEventListener('click', event => {
+  if (event.target === adminOverlay) closeAdminPanel();
+});
+
+authSwitch.addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
+authForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  showAuthError('');
+  authSubmit.disabled = true;
+  try {
+    const resp = await fetch(`/api/auth/${authMode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: authUsername.value.trim(), password: authPassword.value }) });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '操作失败');
+    authPassword.value = '';
+    enterWorkspace(data);
+  } catch (error) {
+    showAuthError(error.message);
+  } finally {
+    authSubmit.disabled = false;
+  }
+});
+
+initAuth();
 
 helpButton?.addEventListener('click', () => {
   alert('使用说明：从左侧选择文档查看内容，也可以直接在下方输入问题。新建文档时可使用 Markdown 工具栏插入标题、列表、代码和表格。');

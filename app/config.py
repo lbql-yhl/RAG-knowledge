@@ -19,11 +19,16 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "512"))
 
 QDRANT_PATH = os.getenv("QDRANT_PATH", str(BASE_DIR / "data" / "qdrant"))
 DOCS_DIR = os.getenv("DOCS_DIR", str(BASE_DIR / "docs"))
+DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "data" / "knowledge.db"))
+DAILY_ASK_LIMIT = int(os.getenv("DAILY_ASK_LIMIT", "10"))
+SESSION_COOKIE = "kb_session"
 
 COLLECTION_NAME = "knowledge_docs"
 TOP_K = int(os.getenv("TOP_K", "5"))
 
 QDRANT_PATH = (BASE_DIR / QDRANT_PATH) if not os.path.isabs(QDRANT_PATH) else Path(QDRANT_PATH)
 DOCS_DIR = (BASE_DIR / DOCS_DIR) if not os.path.isabs(DOCS_DIR) else Path(DOCS_DIR)
+DB_PATH = (BASE_DIR / DB_PATH) if not os.path.isabs(DB_PATH) else Path(DB_PATH)
 QDRANT_PATH = str(QDRANT_PATH)
 DOCS_DIR = str(DOCS_DIR)
+DB_PATH = str(DB_PATH)

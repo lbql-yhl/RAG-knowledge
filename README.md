@@ -9,6 +9,9 @@
 - 编辑工具栏：标题、粗体、斜体、引用、列表、代码块、链接、表格
 - 本地向量检索：使用 Qdrant 本地模式和 fastembed
 - 简洁的响应式界面：适合桌面端和窄屏使用
+- 用户注册/登录：SQLite 保存账号、会话、问答和反馈数据
+- 每日 AI 咨询额度：每个用户每天最多 10 次，后端原子计数，超出返回 429
+- 回答评价与持续学习：每次回答都支持 1-5 星，1-4 星必须填写至少 10 个字符的原因，并沉淀为用户专属回答策略
 
 ## 技术栈
 
@@ -37,6 +40,8 @@ Copy-Item .env.example .env
 ```
 
 然后在 `.env` 中填写模型服务的 API Key 和相关配置。
+
+默认还会在 `data/knowledge.db` 创建轻量级 SQLite 数据库；可通过 `DB_PATH` 修改位置，`DAILY_ASK_LIMIT` 修改每日额度（默认 10）。
 
 ### 3. 准备文档并建立索引
 
@@ -70,7 +75,8 @@ uvicorn app.main:app --reload
 ## 项目结构
 
 ```text
-app/                 FastAPI 后端和 RAG 逻辑
+app/                 FastAPI 后端、认证、SQLite 和 RAG 逻辑
+skills/              AI 文档检索技能说明与持续学习规则
 scripts/             文档索引脚本
 docs/                可公开发布的示例 Markdown 文档
 web/                 前端页面

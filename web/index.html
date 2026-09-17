@@ -4,17 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#12182a">
-  <meta name="description" content="面向团队的本地 AI 知识库工作台">
-  <title>知识库工作台 · 本地 AI</title>
+  <meta name="description" content="面向团队的 x公司知识库">
+  <title>x公司知识库 · 本地 AI</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/shark.svg" type="image/svg+xml">
 </head>
-<body>
+<body class="auth-locked">
+  <div id="auth-gate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="auth-mark"><img src="/static/shark.svg" alt=""></span><span>PRIVATE / KNOWLEDGE OS</span></div>
+      <div class="auth-kicker" id="auth-kicker">WELCOME BACK</div>
+      <h1 id="auth-title">登录 x公司知识库</h1>
+      <p class="auth-copy">登录后即可使用文档检索、个人记忆和每日 10 次 AI 咨询额度。</p>
+      <form id="auth-form">
+        <label class="auth-field"><span>用户名</span><input id="auth-username" name="username" autocomplete="username" required minlength="3" maxlength="40" placeholder="输入用户名"></label>
+        <label class="auth-field"><span>密码</span><input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="6" maxlength="128" placeholder="至少 6 位"></label>
+        <div id="auth-error" class="auth-error" role="alert" hidden></div>
+        <button id="auth-submit" class="auth-submit" type="submit">登录并进入</button>
+      </form>
+      <button id="auth-switch" class="auth-switch" type="button">还没有账号？注册一个</button>
+    </div>
+  </div>
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true"><span>KB</span><i></i></div>
+      <div class="brand-mark" aria-hidden="true"><img src="/static/shark.svg" alt=""></div>
       <div class="brand-info">
         <div class="brand-kicker">PRIVATE / KNOWLEDGE OS</div>
-        <div class="brand-title">知识库工作台</div>
+        <div class="brand-title">x公司知识库</div>
         <div class="brand-sub">让每一份资料都可被理解</div>
       </div>
       <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="收起侧栏" aria-label="收起侧栏">
@@ -27,15 +43,15 @@
       <div class="rail-caption">快捷操作</div>
       <button class="rail-action" type="button" data-rail-action="new" title="新建文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>新建</span></button>
       <button class="rail-action" type="button" data-rail-action="upload" title="上传 Markdown 文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg><span>上传</span></button>
-      <button class="rail-action" type="button" data-rail-action="sync" title="同步本地目录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9A7 7 0 0 1 18.3 7.2L20 9M4 15l1.7 1.8A7 7 0 0 0 17.9 15"/></svg><span>同步</span></button>
-      <button class="rail-action" type="button" data-rail-action="ingest" title="重新索引全部文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg><span>索引</span></button>
+      <button class="rail-action" type="button" data-rail-action="sync" data-admin-only="true" title="同步本地目录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9A7 7 0 0 1 18.3 7.2L20 9M4 15l1.7 1.8A7 7 0 0 0 17.9 15"/></svg><span>同步</span></button>
+      <button class="rail-action" type="button" data-rail-action="ingest" data-admin-only="true" title="重新索引全部文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg><span>索引</span></button>
     </div>
 
     <nav class="sidebar-nav" aria-label="主导航">
       <div class="nav-label">工作区</div>
       <a class="nav-item active" href="#workspace" data-section="workspace" aria-current="page">
         <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span>
-        <span>知识工作台</span><small>当前</small>
+        <span>x公司知识库</span><small>当前</small>
       </a>
     </nav>
 
@@ -56,8 +72,8 @@
         </label>
         <div class="sidebar-actions" aria-label="文档操作">
           <button id="upload-btn" type="button" title="上传 Markdown 文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg><span>上传</span></button>
-          <button id="sync-btn" type="button" title="同步本地目录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9A7 7 0 0 1 18.3 7.2L20 9M4 15l1.7 1.8A7 7 0 0 0 17.9 15"/></svg><span>同步</span></button>
-          <button id="ingest-btn" type="button" title="重新索引全部文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg><span>索引</span></button>
+          <button id="sync-btn" data-admin-only="true" type="button" title="同步本地目录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9A7 7 0 0 1 18.3 7.2L20 9M4 15l1.7 1.8A7 7 0 0 0 17.9 15"/></svg><span>同步</span></button>
+          <button id="ingest-btn" data-admin-only="true" type="button" title="重新索引全部文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg><span>索引</span></button>
         </div>
       </div>
 
@@ -78,9 +94,11 @@
         <div class="breadcrumb"><span>工作台</span><b>/</b><strong>知识问答</strong></div>
       </div>
       <div class="topbar-actions">
+        <span id="quota-badge" class="quota-badge" role="status" aria-live="polite" hidden></span>
         <span class="secure-badge"><i></i> 本地运行</span>
         <button class="topbar-help" type="button" title="查看使用说明"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.7 1.8c-.9.7-1.5 1.1-1.5 2.4M12 16.7h.01"/></svg><span>使用说明</span></button>
-        <div class="workspace-user" title="当前工作区">KB</div>
+        <button id="admin-btn" class="topbar-help admin-only" type="button" title="管理普通用户" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8 14 5l2.3-.1.8 2.2 1.9 1.3-.8 2.2.8 2.2-1.9 1.3-.8 2.2-2.3-.1-2 1.2-2-1.2-2.3.1-.8-2.2L5 12.8l.8-2.2L5 8.4l1.9-1.3.8-2.2L10 5l2-1.2Z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M8.5 17.2c.7-1.5 1.8-2.2 3.5-2.2s2.8.7 3.5 2.2"/></svg><span>管理用户</span></button>
+        <div class="workspace-user user-menu" title="当前账号，点击退出"><span id="user-initial">KB</span><small id="user-name">未登录</small></div>
       </div>
     </header>
 
@@ -109,10 +127,14 @@
         <div class="input-wrap">
           <label class="sr-only" for="question">向知识库提问</label>
           <div class="input-row">
-            <textarea id="question" rows="2" placeholder="询问知识库中的任何内容…"></textarea>
-            <button id="ask-btn" type="button" aria-label="发送问题"><span>发送问题</span><b>Enter <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></b></button>
+            <textarea id="question" rows="1" placeholder="询问知识库中的任何内容…"></textarea>
+            <button id="ask-btn" type="button" aria-label="发送"><span>发送</span></button>
           </div>
-          <div class="input-meta"><span><i></i> 回答仅基于当前文档库</span><span><kbd>Enter</kbd> 发送 · <kbd>Shift</kbd> + <kbd>Enter</kbd> 换行</span></div>
+          <div class="input-meta">
+            <span><i></i> 回答仅基于当前文档库</span>
+            <span id="quota-reminder" class="quota-reminder" role="status" aria-live="polite" hidden></span>
+            <span><kbd>回车</kbd> 发送 · <kbd>Shift</kbd> + <kbd>回车</kbd> 换行</span>
+          </div>
         </div>
       </section>
 
@@ -122,8 +144,8 @@
         <div class="viewer-toolbar" id="viewer-toolbar" style="display:none">
           <div class="viewer-heading"><span class="file-badge">MD</span><span class="viewer-heading-copy"><span class="viewer-eyebrow">正在查看</span><span class="viewer-title" id="viewer-title"></span></span></div>
           <div class="viewer-actions">
-            <button id="edit-btn" class="toolbar-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 3.7 3.7-.7L18.5 8a2.1 2.1 0 0 0-3-3L4 16.5Z"/><path d="m14.5 6.5 3 3"/></svg><span>编辑</span></button>
-            <button id="delete-btn" class="toolbar-btn danger" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M8 7l1-2h6l1 2m-9 0 .7 13h8.6L17 7"/></svg><span>删除</span></button>
+            <button id="edit-btn" data-admin-only="true" class="toolbar-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 3.7 3.7-.7L18.5 8a2.1 2.1 0 0 0-3-3L4 16.5Z"/><path d="m14.5 6.5 3 3"/></svg><span>编辑</span></button>
+            <button id="delete-btn" data-admin-only="true" class="toolbar-btn danger" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M8 7l1-2h6l1 2m-9 0 .7 13h8.6L17 7"/></svg><span>删除</span></button>
           </div>
         </div>
         <div class="viewer" id="viewer">
@@ -183,6 +205,24 @@
       <div class="modal-footer">
         <button id="modal-cancel" class="toolbar-btn" type="button">取消</button>
         <button id="modal-save" class="primary-btn" type="button">保存文档</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="admin-overlay" style="display:none">
+    <div class="modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+      <div class="modal-header">
+        <div><span class="modal-eyebrow">ADMIN CONTROL</span><span id="admin-modal-title">用户额度管理</span></div>
+        <button class="modal-close" id="admin-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="admin-copy">管理员不受每日咨询次数限制。你可以清除普通用户今天的咨询记录，让其恢复 10 次额度。</p>
+        <div id="admin-users-state" class="admin-users-state">正在加载用户…</div>
+        <div id="admin-users-list" class="admin-users-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="admin-refresh" class="toolbar-btn" type="button">刷新列表</button>
+        <button id="admin-cancel" class="primary-btn" type="button">完成</button>
       </div>
     </div>
   </div>
