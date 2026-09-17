@@ -37,6 +37,12 @@ let currentContent = '';
 let editMode = false;
 let editorPreviewMode = false;
 
+function setActionLabel(button, label) {
+  const text = button?.querySelector('span');
+  if (text) text.textContent = label;
+  else if (button) button.textContent = label;
+}
+
 function countDocs(node) {
   return node.files.length + node.dirs.reduce((sum, dir) => sum + countDocs(dir), 0);
 }
@@ -361,9 +367,10 @@ async function saveDoc() {
     });
     const data = await resp.json();
     if (!resp.ok) { alert('保存失败：' + (data.detail || '未知错误')); return; }
+    const savedPath = editMode ? currentPath : data.path;
     closeModal();
     await loadDocs();
-    await openDoc(editMode ? currentPath : data.path);
+    await openDoc(savedPath);
   } catch (e) {
     alert('保存失败：' + e.message);
   } finally {
@@ -392,17 +399,19 @@ questionInput.addEventListener('keydown', (e) => {
 });
 
 ingestBtn.addEventListener('click', async () => {
-  ingestBtn.textContent = '索引中...';
+  if (!confirm('确认重建索引？这会重新扫描并重建全部文档索引，可能需要一点时间。')) return;
+  setActionLabel(ingestBtn, '索引中...');
   ingestBtn.disabled = true;
   try {
     const resp = await fetch('/api/ingest', { method: 'POST' });
     const data = await resp.json();
+    if (!resp.ok) { alert('索引失败：' + (data.detail || '未知错误')); return; }
     alert(`索引完成：${data.files} 篇文档，${data.chunks} 个片段`);
     loadDocs();
   } catch (e) {
     alert('索引失败：' + e.message);
   } finally {
-    ingestBtn.textContent = '重建索引';
+    setActionLabel(ingestBtn, '索引');
     ingestBtn.disabled = false;
   }
 });
@@ -422,7 +431,8 @@ modalOverlay.addEventListener('click', (e) => {
 sidebarToggle.addEventListener('click', () => {
   sidebar.classList.toggle('collapsed');
   const collapsed = sidebar.classList.contains('collapsed');
-  sidebarToggle.textContent = collapsed ? '展开' : '收起';
+  const toggleLabel = sidebarToggle.querySelector('span');
+  if (toggleLabel) toggleLabel.textContent = collapsed ? '展开' : '收起';
   sidebarToggle.title = collapsed ? '展开侧栏' : '收起侧栏';
   sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
 });
@@ -470,7 +480,7 @@ fileInput.addEventListener('change', async () => {
   for (const f of files) formData.append('files', f);
   formData.append('dir', dir);
 
-  uploadBtn.textContent = '上传中...';
+  setActionLabel(uploadBtn, '上传中...');
   uploadBtn.disabled = true;
   try {
     const resp = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -481,7 +491,7 @@ fileInput.addEventListener('change', async () => {
   } catch (e) {
     alert('上传失败：' + e.message);
   } finally {
-    uploadBtn.textContent = '上传';
+    setActionLabel(uploadBtn, '上传');
     uploadBtn.disabled = false;
     fileInput.value = '';
   }
@@ -490,7 +500,8 @@ fileInput.addEventListener('change', async () => {
 syncBtn.addEventListener('click', async () => {
   const src = (prompt('输入要同步的本地目录路径（该目录下的 .md 文件会被同步）', '') || '').trim();
   if (!src) return;
-  syncBtn.textContent = '同步中...';
+  if (!confirm(`确认同步目录「${src}」？该目录下的 Markdown 文件会写入本地知识库。`)) return;
+  setActionLabel(syncBtn, '同步中...');
   syncBtn.disabled = true;
   try {
     const resp = await fetch('/api/sync', {
@@ -505,7 +516,7 @@ syncBtn.addEventListener('click', async () => {
   } catch (e) {
     alert('同步失败：' + e.message);
   } finally {
-    syncBtn.textContent = '同步';
+    setActionLabel(syncBtn, '同步');
     syncBtn.disabled = false;
   }
 });
