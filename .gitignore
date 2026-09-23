@@ -1,34 +1,18 @@
+# API Key 与敏感配置（不提交）
 .env
 .env.bak*
-data/
-__pycache__/
-*.pyc
+
+# 虚拟环境与缓存（可再生成，不提交）
 .venv/
 venv/
+__pycache__/
+*.pyc
 
-# Local backups
-_backup_*/
-
-# Private knowledge-base documents: never publish these by default.
-/docs/*
-!/docs/README.md
-!/docs/examples/
-!/docs/examples/**
-
-# Local browser QA artifacts
+# 浏览器测试残留（非文档，约 40MB，不提交）
 /docs/chrome-profile-*/
-/docs/ui-redesign-*.png
 
-# Public sample libraries generated for this project
-!/docs/运维/
-!/docs/运维/**
-!/docs/人工智能/
-!/docs/人工智能/**
-!/docs/开发/
-!/docs/开发/**
-!/docs/运营/
-!/docs/运营/**
-!/docs/hr/
-!/docs/hr/**
-!/docs/HR/
-!/docs/HR/**
+# 向量索引（可从文档重新索引，且运行时被锁定，不提交）
+/data/qdrant/
+
+# 数据库历史备份（冗余，不提交）
+/data/*.bak*
