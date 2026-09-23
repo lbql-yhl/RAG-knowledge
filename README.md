@@ -117,8 +117,7 @@ run_server.bat       一键启动脚本
 
 主界面
 
-<img width="1918" height="900" alt="image" src="https://github.com/user-attachments/assets/4dfb5b95-5eae-4ea8-b588-c0fbd2c41308" />
+<img width="1905" height="946" alt="image" src="https://github.com/user-attachments/assets/a77ecee9-8857-4cc4-9a82-46179bbecb99" />
 
-权限
+<img width="1920" height="961" alt="image" src="https://github.com/user-attachments/assets/43f86af8-fb65-40a5-b8fb-8dc645f3aa82" />
 
-<img width="738" height="589" alt="image" src="https://github.com/user-attachments/assets/c87eca95-714f-446c-9374-0e886a47e74f" />
