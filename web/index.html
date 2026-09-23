@@ -2,56 +2,62 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#12182a">
-  <meta name="description" content="面向团队的 x公司知识库">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFFFFF">
+  <meta name="description" content="面向团队的 x公司知识库 —— 从内部文档里找答案，带出处">
   <title>x公司知识库 · 本地 AI</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" href="/static/shark.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/shark-ink-dark.svg" type="image/svg+xml">
+  <script>/* 深色模式防闪烁：在样式应用前恢复用户上次选择 */
+  try { if (localStorage.getItem('kb-theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+  </script>
 </head>
 <body class="auth-locked">
+  <a class="skip-link" href="#workspace">跳到主内容</a>
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
+
+  <!-- ============================================ 登录 / 注册 -->
   <div id="auth-gate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="auth-card">
-      <div class="auth-brand"><span class="auth-mark"><img src="/static/shark.svg" alt=""></span><span>PRIVATE / KNOWLEDGE OS</span></div>
+      <div class="auth-brand">
+        <span class="auth-mark"><img src="/static/shark-ink.svg" alt=""></span>
+      </div>
       <div class="auth-kicker" id="auth-kicker">WELCOME BACK</div>
       <h1 id="auth-title">登录 x公司知识库</h1>
-      <p class="auth-copy">登录后即可使用文档检索、个人记忆和每日 10 次 AI 咨询额度。</p>
+      <p class="auth-copy">让每一次提问，都有据可依。</p>
       <form id="auth-form">
-        <label class="auth-field"><span>用户名</span><input id="auth-username" name="username" autocomplete="username" required minlength="3" maxlength="40" placeholder="输入用户名"></label>
-        <label class="auth-field"><span>密码</span><input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="6" maxlength="128" placeholder="至少 6 位"></label>
+        <label class="auth-field">
+          <span>用户名</span>
+          <input id="auth-username" name="username" autocomplete="username" required minlength="3" maxlength="40" placeholder="3–40 个字符">
+        </label>
+        <label class="auth-field">
+          <span>密码</span>
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="6" maxlength="128" placeholder="至少 6 位">
+        </label>
         <div id="auth-error" class="auth-error" role="alert" hidden></div>
         <button id="auth-submit" class="auth-submit" type="submit">登录并进入</button>
       </form>
       <button id="auth-switch" class="auth-switch" type="button">还没有账号？注册一个</button>
     </div>
   </div>
+
+  <!-- ============================================ 侧栏 -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true"><img src="/static/shark.svg" alt=""></div>
+      <div class="brand-mark" aria-hidden="true"><img src="/static/shark-ink.svg" alt=""></div>
       <div class="brand-info">
-        <div class="brand-kicker">PRIVATE / KNOWLEDGE OS</div>
         <div class="brand-title">x公司知识库</div>
-        <div class="brand-sub">让每一份资料都可被理解</div>
       </div>
-      <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="收起侧栏" aria-label="收起侧栏">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5M9.5 12H20"/></svg>
-        <span>收起</span>
+      <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="关闭" aria-label="关闭侧栏">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
       </button>
-    </div>
-
-    <div class="collapsed-rail" aria-label="快捷操作">
-      <div class="rail-caption">快捷操作</div>
-      <button class="rail-action" type="button" data-rail-action="new" title="新建文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>新建</span></button>
-      <button class="rail-action" type="button" data-rail-action="upload" title="上传 Markdown 文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg><span>上传</span></button>
-      <button class="rail-action" type="button" data-rail-action="sync" data-admin-only="true" title="同步本地目录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9A7 7 0 0 1 18.3 7.2L20 9M4 15l1.7 1.8A7 7 0 0 0 17.9 15"/></svg><span>同步</span></button>
-      <button class="rail-action" type="button" data-rail-action="ingest" data-admin-only="true" title="重新索引全部文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg><span>索引</span></button>
     </div>
 
     <nav class="sidebar-nav" aria-label="主导航">
       <div class="nav-label">工作区</div>
       <a class="nav-item active" href="#workspace" data-section="workspace" aria-current="page">
         <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span>
-        <span>x公司知识库</span><small>当前</small>
+        <span>x公司知识库</span>
       </a>
     </nav>
 
@@ -67,8 +73,8 @@
       <div class="doc-tools">
         <label class="search-box" for="doc-search">
           <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
-          <input id="doc-search" type="search" placeholder="搜索文档" autocomplete="off">
-          <kbd>/</kbd>
+          <input id="doc-search" type="search" placeholder="按标题筛选文档" autocomplete="off">
+          <kbd aria-hidden="true">/</kbd>
         </label>
         <div class="sidebar-actions" aria-label="文档操作">
           <button id="upload-btn" type="button" title="上传 Markdown 文档"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg><span>上传</span></button>
@@ -87,63 +93,126 @@
     </div>
   </aside>
 
+  <!-- ============================================ 主区 -->
   <main class="main" id="workspace">
     <header class="topbar">
+      <button id="drawer-toggle" class="drawer-toggle" type="button" aria-label="打开侧边栏" aria-expanded="false" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5h14M5 14.5h14"/></svg>
+      </button>
       <div class="topbar-context">
-        <span class="topbar-overline">知识空间 / 2026</span>
-        <div class="breadcrumb"><span>工作台</span><b>/</b><strong>知识问答</strong></div>
+        <div class="breadcrumb"><strong>RAG知识库</strong></div>
       </div>
       <div class="topbar-actions">
-        <span id="quota-badge" class="quota-badge" role="status" aria-live="polite" hidden></span>
-        <span class="secure-badge"><i></i> 本地运行</span>
+        <span class="secure-badge"><i aria-hidden="true"></i> 本地运行</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" title="切换深色 / 浅色模式" aria-label="切换深色或浅色模式" aria-pressed="false">
+          <svg class="theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg>
+          <svg class="theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg>
+        </button>
         <button class="topbar-help" type="button" title="查看使用说明"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.7 1.8c-.9.7-1.5 1.1-1.5 2.4M12 16.7h.01"/></svg><span>使用说明</span></button>
         <button id="permission-btn" class="topbar-help" type="button" title="申请知识库权限"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.2c0 4.7 3.1 8.2 7.5 9.8 4.4-1.6 7.5-5.1 7.5-9.8V6L12 3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg><span>我的权限</span></button>
         <button id="admin-btn" class="topbar-help admin-only" type="button" title="管理普通用户" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8 14 5l2.3-.1.8 2.2 1.9 1.3-.8 2.2.8 2.2-1.9 1.3-.8 2.2-2.3-.1-2 1.2-2-1.2-2.3.1-.8-2.2L5 12.8l.8-2.2L5 8.4l1.9-1.3.8-2.2L10 5l2-1.2Z"/><circle cx="12" cy="10.5" r="2.2"/><path d="M8.5 17.2c.7-1.5 1.8-2.2 3.5-2.2s2.8.7 3.5 2.2"/></svg><span>管理用户</span></button>
-        <div class="workspace-user user-menu" title="当前账号，点击退出"><span id="user-initial">KB</span><small id="user-name">未登录</small></div>
+        <div class="user-menu-wrap">
+          <button id="user-menu-btn" class="workspace-user user-menu" type="button" title="账号菜单" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar" id="user-avatar"><span id="user-initial">KB</span></span>
+            <small id="user-name">未登录</small>
+          </button>
+          <div class="user-panel" id="user-panel" hidden>
+            <div class="user-panel-head">
+              <span class="user-avatar user-avatar-lg" id="panel-avatar"></span>
+              <div>
+                <strong id="panel-name"></strong>
+                <small id="panel-username"></small>
+              </div>
+            </div>
+            <button type="button" class="user-panel-item" data-user-action="profile">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.4 3.6-5.2 7-5.2s6.2 1.8 7 5.2"/></svg>
+              <span>编辑资料</span>
+            </button>
+            <button type="button" class="user-panel-item" data-user-action="switch">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3 4 7l4 4M4 7h13M16 21l4-4-4-4M20 17H7"/></svg>
+              <span>切换账号</span>
+            </button>
+            <button type="button" class="user-panel-item" data-user-action="logout">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5H6.5v15H14M10 12h10.5M17 8.5l3.5 3.5-3.5 3.5"/></svg>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
+    <!-- 窄屏面板切换（宽屏两栏同显，此栏自动退场） -->
+    <div class="tabbar" role="group" aria-label="面板切换">
+      <input class="tab-input" type="radio" name="panel-tab" id="tab-chat" checked>
+      <label class="tab-label" for="tab-chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+        <span>知识问答</span>
+      </label>
+      <input class="tab-input" type="radio" name="panel-tab" id="tab-doc">
+      <label class="tab-label" for="tab-doc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>
+        <span>文档预览</span>
+      </label>
+    </div>
+
     <div class="content">
+      <!-- ======================================== 问答 -->
       <section class="chat-panel" id="chat-panel">
         <div class="panel-heading chat-heading">
           <div class="panel-heading-copy">
-            <div class="panel-kicker"><span class="kicker-mark"></span> AI / 知识助手</div>
-            <div class="panel-title">把问题交给你的文档</div>
+            <div class="panel-kicker"><span class="kicker-mark" aria-hidden="true"></span> AI / 知识助手</div>
+            <h1 class="panel-title">把问题交给你的文档</h1>
             <div class="panel-subtitle">检索、归纳、引用，一次完成。</div>
           </div>
-          <span class="ready-pill"><i></i> 就绪</span>
+          <span class="ready-pill"><i aria-hidden="true"></i> 就绪</span>
         </div>
-        <div class="messages" id="messages">
+
+        <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions">
           <div class="empty-hint">
-            <div class="hint-orbit" aria-hidden="true"><div class="orbit-core"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3 6.3 17.7"/></svg></div><span class="orbit-dot one"></span><span class="orbit-dot two"></span><span class="orbit-dot three"></span></div>
-            <div class="hint-eyebrow"><i></i> 私有知识工作区</div>
-            <div class="hint-title">从你的知识库开始提问</div>
-            <p>我会从当前文档中找到依据，提炼重点，并附上可追溯的参考来源。</p>
+            <div class="hint-eyebrow"><i aria-hidden="true"></i> 私有知识工作区</div>
+            <h2 class="hint-title">从你的知识库开始提问</h2>
+            <p>我会从你已获授权的文档里找出依据，提炼重点，并附上可以点开的出处。找不到依据时会直接说明，不会编造。</p>
             <div class="suggestions" aria-label="推荐问题">
-              <button type="button" data-question="公司的请假流程是什么？"><span class="suggestion-number">01</span><span>公司的请假流程是什么？</span><b>查看流程</b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
-              <button type="button" data-question="报销需要哪些发票材料？"><span class="suggestion-number">02</span><span>报销需要哪些发票材料？</span><b>快速查找</b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+              <button type="button" data-question="公司的请假流程是什么？">
+                <span class="suggestion-number">01</span>
+                <span>公司的请假流程是什么？</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              </button>
+              <button type="button" data-question="报销需要哪些发票材料？">
+                <span class="suggestion-number">02</span>
+                <span>报销需要哪些发票材料？</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              </button>
             </div>
           </div>
         </div>
+
         <div class="input-wrap">
           <label class="sr-only" for="question">向知识库提问</label>
           <div class="input-row">
             <textarea id="question" rows="1" placeholder="询问知识库中的任何内容…"></textarea>
-            <button id="ask-btn" type="button" aria-label="发送"><span>发送</span></button>
+            <button id="ask-btn" type="button" aria-label="发送问题"><span>发送</span></button>
           </div>
           <div class="input-meta">
-            <span><i></i> 回答仅基于当前文档库</span>
+            <span><i aria-hidden="true"></i> 回答仅基于当前文档库</span>
             <span id="quota-reminder" class="quota-reminder" role="status" aria-live="polite" hidden></span>
             <span><kbd>回车</kbd> 发送 · <kbd>Shift</kbd> + <kbd>回车</kbd> 换行</span>
           </div>
         </div>
       </section>
 
-      <div class="divider" id="divider" title="拖动调整宽度" aria-label="拖动调整左右区域宽度"><span></span></div>
+      <div class="divider" id="divider" role="separator" aria-orientation="vertical" aria-label="拖动调整左右区域宽度" tabindex="0"><span aria-hidden="true"></span></div>
 
+      <!-- ======================================== 文档预览 -->
       <section class="viewer-panel">
         <div class="viewer-toolbar" id="viewer-toolbar" style="display:none">
-          <div class="viewer-heading"><span class="file-badge">MD</span><span class="viewer-heading-copy"><span class="viewer-eyebrow">正在查看</span><span class="viewer-title" id="viewer-title"></span></span></div>
+          <div class="viewer-heading">
+            <span class="file-badge" aria-hidden="true">MD</span>
+            <span class="viewer-heading-copy">
+              <span class="viewer-eyebrow">正在查看</span>
+              <span class="viewer-title" id="viewer-title"></span>
+            </span>
+          </div>
           <div class="viewer-actions">
             <button id="edit-btn" data-admin-only="true" class="toolbar-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 3.7 3.7-.7L18.5 8a2.1 2.1 0 0 0-3-3L4 16.5Z"/><path d="m14.5 6.5 3 3"/></svg><span>编辑</span></button>
             <button id="delete-btn" data-admin-only="true" class="toolbar-btn danger" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M8 7l1-2h6l1 2m-9 0 .7 13h8.6L17 7"/></svg><span>删除</span></button>
@@ -155,12 +224,14 @@
             <div class="viewer-empty-label">DOCUMENT PREVIEW</div>
             <strong>选择一篇文档开始阅读</strong>
             <span>从左侧打开一份资料，或先创建一篇 Markdown 文档。</span>
-            <div class="viewer-empty-tip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 10v5M12 7.5h.01"/></svg> 右侧会显示完整内容与出处</div>
+            <div class="viewer-empty-tip"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 7.5h.01"/></svg> 回答里的引用可以直接跳到对应段落</div>
           </div>
         </div>
       </section>
     </div>
   </main>
+
+  <!-- ============================================ 新建 / 编辑文档 -->
   <div class="modal-overlay" id="modal-overlay" style="display:none">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-header">
@@ -169,35 +240,41 @@
       </div>
       <div class="modal-body">
         <div class="field-grid">
-          <label class="field"><span>标题</span><input type="text" id="doc-name" placeholder="文档标题，如：新员工手册"></label>
-          <label class="field"><span>目录（可选）</span><input type="text" id="doc-dir" placeholder="如：AI知识，留空则放根目录"></label>
+          <label class="field"><span>标题</span><input type="text" id="doc-name" placeholder="如：新员工手册"></label>
+          <div class="field">
+            <span>目录</span>
+            <div class="dir-select-row">
+              <select id="doc-dir"></select>
+              <button id="new-dir-btn" class="dir-new-btn" type="button" title="新建目录">新建目录</button>
+            </div>
+          </div>
         </div>
-        <label class="field"><span>内容（Markdown）</span></label>
+        <span class="field-label" id="doc-content-label">内容（Markdown）</span>
         <div class="editor-shell">
           <div class="editor-toolbar" id="editor-toolbar" role="toolbar" aria-label="Markdown 编辑工具栏">
             <select id="heading-select" class="editor-select" title="标题层级" aria-label="标题层级">
               <option value="">正文</option><option value="1">一级标题</option><option value="2">二级标题</option><option value="3">三级标题</option><option value="4">四级标题</option><option value="5">五级标题</option><option value="6">六级标题</option>
             </select>
-            <span class="editor-divider"></span>
-            <button type="button" class="editor-tool strong" data-format="bold" title="粗体（Ctrl/Cmd + B）">B</button>
-            <button type="button" class="editor-tool italic" data-format="italic" title="斜体（Ctrl/Cmd + I）">I</button>
-            <button type="button" class="editor-tool strike" data-format="strike" title="删除线">S</button>
-            <button type="button" class="editor-tool" data-format="inline-code" title="行内代码">&lt;/&gt;</button>
-            <span class="editor-divider"></span>
-            <button type="button" class="editor-tool" data-format="quote" title="引用">“</button>
-            <button type="button" class="editor-tool" data-format="bullet" title="无序列表">•</button>
-            <button type="button" class="editor-tool" data-format="ordered" title="有序列表">1.</button>
-            <button type="button" class="editor-tool" data-format="checklist" title="任务列表">☑</button>
-            <span class="editor-divider"></span>
+            <span class="editor-divider" aria-hidden="true"></span>
+            <button type="button" class="editor-tool strong" data-format="bold" title="粗体（Ctrl/Cmd + B）" aria-label="粗体">B</button>
+            <button type="button" class="editor-tool italic" data-format="italic" title="斜体（Ctrl/Cmd + I）" aria-label="斜体">I</button>
+            <button type="button" class="editor-tool strike" data-format="strike" title="删除线" aria-label="删除线">S</button>
+            <button type="button" class="editor-tool" data-format="inline-code" title="行内代码" aria-label="行内代码">&lt;/&gt;</button>
+            <span class="editor-divider" aria-hidden="true"></span>
+            <button type="button" class="editor-tool" data-format="quote" title="引用" aria-label="引用">“</button>
+            <button type="button" class="editor-tool" data-format="bullet" title="无序列表" aria-label="无序列表">•</button>
+            <button type="button" class="editor-tool" data-format="ordered" title="有序列表" aria-label="有序列表">1.</button>
+            <button type="button" class="editor-tool" data-format="checklist" title="任务列表" aria-label="任务列表">☑</button>
+            <span class="editor-divider" aria-hidden="true"></span>
             <button type="button" class="editor-tool" data-format="code-block" title="代码块">代码</button>
             <button type="button" class="editor-tool" data-format="link" title="插入链接">链接</button>
             <button type="button" class="editor-tool" data-format="table" title="插入表格">表格</button>
             <button type="button" class="editor-tool" data-format="hr" title="分隔线">分隔线</button>
             <span class="editor-toolbar-spacer"></span>
-            <button type="button" id="editor-preview-toggle" class="editor-mode-btn" title="切换预览">预览</button>
+            <button type="button" id="editor-preview-toggle" class="editor-mode-btn" title="切换源码 / 预览">预览</button>
           </div>
           <div class="editor-surface">
-            <textarea id="doc-content" rows="16" placeholder="开始写作，或使用上方工具栏插入标题、代码、列表和表格…"></textarea>
+            <textarea id="doc-content" rows="16" aria-labelledby="doc-content-label" placeholder="开始写作，或使用上方工具栏插入标题、列表、代码和表格…"></textarea>
             <div id="doc-preview" class="editor-preview markdown" hidden></div>
           </div>
           <div class="editor-status"><span id="editor-mode-label">Markdown 源码</span><span><kbd>Ctrl</kbd> + <kbd>S</kbd> 保存</span></div>
@@ -210,6 +287,7 @@
     </div>
   </div>
 
+  <!-- ============================================ 管理用户 -->
   <div class="modal-overlay" id="admin-overlay" style="display:none">
     <div class="modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
       <div class="modal-header">
@@ -217,7 +295,7 @@
         <button class="modal-close" id="admin-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
       </div>
       <div class="modal-body">
-        <p class="admin-copy">管理员拥有全部知识库权限。先处理权限申请，再按需清除额度或删除普通用户。删除用户会同时清理其会话、问答记录和权限申请。</p>
+        <p class="admin-copy">管理员默认拥有全部知识库权限。先处理权限申请，再按需重置额度或删除用户；删除用户会一并清理其会话、问答记录和权限申请，操作不可撤销。</p>
         <div class="admin-section-title">待审批的知识库权限</div>
         <div id="admin-requests-state" class="admin-users-state">正在加载申请…</div>
         <div id="admin-requests-list" class="admin-users-list"></div>
@@ -232,6 +310,7 @@
     </div>
   </div>
 
+  <!-- ============================================ 我的权限 -->
   <div class="modal-overlay" id="permission-overlay" style="display:none">
     <div class="modal permission-modal" role="dialog" aria-modal="true" aria-labelledby="permission-modal-title">
       <div class="modal-header">
@@ -239,7 +318,7 @@
         <button class="modal-close" id="permission-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
       </div>
       <div class="modal-body">
-        <p class="admin-copy">按需申请知识库，管理员审批通过后才可阅读该库文档并让 AI 在该库内检索。</p>
+        <p class="admin-copy">按需申请知识库。管理员审批通过后，你才能阅读该库文档，AI 也只会在你已获授权的库内检索。</p>
         <div id="permission-state" class="admin-users-state">正在加载权限…</div>
         <div id="permission-list" class="permission-list"></div>
       </div>
@@ -247,7 +326,237 @@
     </div>
   </div>
 
+  <!-- ============================================ 编辑资料 -->
+  <div class="modal-overlay" id="profile-overlay" style="display:none">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+      <div class="modal-header">
+        <div><span class="modal-eyebrow">PROFILE</span><span id="profile-modal-title">编辑资料</span></div>
+        <button class="modal-close" id="profile-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="profile-avatar-row">
+          <button id="profile-avatar-btn" class="profile-avatar-btn" type="button" title="更换头像">
+            <span id="profile-avatar-preview" aria-hidden="true"></span>
+            <span class="profile-avatar-hint">更换头像</span>
+          </button>
+          <div class="profile-avatar-meta">头像支持 JPG / PNG / WebP，会自动压缩。<br>名称与头像共用修改次数：每月 2 次。</div>
+        </div>
+        <label class="field"><span>显示名称</span><input type="text" id="profile-name" maxlength="20" placeholder="仅中文和英文" autocomplete="nickname"></label>
+        <div id="profile-error" class="auth-error" role="alert" hidden></div>
+        <div class="profile-quota" id="profile-quota">本月剩余修改次数：<b>2 / 2</b></div>
+      </div>
+      <div class="modal-footer">
+        <button id="profile-cancel" class="toolbar-btn" type="button">取消</button>
+        <button id="profile-save" class="primary-btn" type="button">保存修改</button>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="avatar-input" accept="image/png,image/jpeg,image/webp" style="display:none">
+
+  <div class="toast-stack" id="toast-stack" role="region" aria-label="通知" aria-live="polite"></div>
+
   <input type="file" id="file-input" multiple accept=".md,.markdown" style="display:none">
   <script src="/static/app.js"></script>
+  <script>
+  /* =========================================================================
+     体验层增强 —— 与 app.js 的业务逻辑解耦，只负责交互质感
+       1. 抽屉侧栏 + 窄屏面板切换
+       2. 浮层提示 kbToast()，替代原生 alert
+       3. 内嵌对话框 kbAsk()，替代原生 confirm / prompt
+     所有替代都是"非阻塞 + 可键盘操作"，且取消时语义与原生一致。
+     ========================================================================= */
+  (function () {
+    'use strict';
+
+    function escapeText(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    /* ---------------------------------------------- 1. 抽屉与面板切换 */
+    var MQ = window.matchMedia('(max-width: 1023px)');
+    var main = document.querySelector('.main');
+    var toggle = document.getElementById('drawer-toggle');
+    var scrim = document.getElementById('scrim');
+    var chatTab = document.getElementById('tab-chat');
+    var docTab = document.getElementById('tab-doc');
+
+    if (main && toggle && chatTab && docTab) {
+      var setDrawer = function (open) {
+        document.body.classList.toggle('drawer-open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        toggle.setAttribute('aria-label', open ? '关闭侧边栏' : '打开侧边栏');
+      };
+      var showChat = function () { chatTab.checked = true; main.classList.remove('view-doc'); };
+      var showDoc = function () {
+        if (!MQ.matches) return;
+        docTab.checked = true;
+        main.classList.add('view-doc');
+        setDrawer(false);
+      };
+
+      toggle.addEventListener('click', function () {
+        setDrawer(!document.body.classList.contains('drawer-open'));
+      });
+      if (scrim) scrim.addEventListener('click', function () { setDrawer(false); });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && document.body.classList.contains('drawer-open')) setDrawer(false);
+      });
+      if (MQ.addEventListener) {
+        MQ.addEventListener('change', function (event) {
+          if (!event.matches) { setDrawer(false); showChat(); }
+        });
+      }
+      chatTab.addEventListener('change', function () { main.classList.remove('view-doc'); });
+      docTab.addEventListener('change', function () { main.classList.toggle('view-doc', docTab.checked); });
+
+      /* 窄屏：打开文档或点击引用来源时，自动切到文档预览面板 */
+      document.addEventListener('click', function (event) {
+        if (event.target.closest && event.target.closest('.doc-item, .source-chip')) showDoc();
+      });
+    }
+
+    /* ---------------------------------------------- 2. 浮层提示 */
+    var stack = document.getElementById('toast-stack');
+    var TITLES = { success: '已完成', warn: '请注意', error: '出错了', info: '提示' };
+    var DURATION = { success: 3000, info: 3600, warn: 4800, error: 6400 };
+
+    window.kbToast = function (message, options) {
+      if (!stack || message == null) return function () {};
+      var opts = options || {};
+      var kind = opts.kind || 'info';
+
+      var node = document.createElement('div');
+      node.className = 'toast ' + kind;
+      node.setAttribute('role', (kind === 'error' || kind === 'warn') ? 'alert' : 'status');
+
+      var title = opts.title === null ? '' : (opts.title || TITLES[kind] || '提示');
+      node.innerHTML =
+        '<div class="toast-body">' +
+          (title ? '<strong>' + escapeText(title) + '</strong>' : '') +
+          '<p>' + escapeText(message) + '</p>' +
+        '</div>' +
+        '<button class="toast-close" type="button" aria-label="关闭通知">' +
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>' +
+        '</button>';
+
+      var timer = null;
+      var dismiss = function () {
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (node.classList.contains('is-leaving')) return;
+        node.classList.add('is-leaving');
+        node.addEventListener('animationend', function () { node.remove(); }, { once: true });
+        window.setTimeout(function () { node.remove(); }, 400);
+      };
+
+      node.querySelector('.toast-close').addEventListener('click', dismiss);
+      stack.appendChild(node);
+      timer = window.setTimeout(dismiss, opts.duration || DURATION[kind] || 3600);
+      return dismiss;
+    };
+
+    /* ---------------------------------------------- 3. 内嵌对话框
+       kbAsk(options, callback) —— 非阻塞。callback(ok, value) 在被调用时执行。
+       ok 为 false 表示用户取消，value 为用户输入（仅 prompt 模式有值）。 */
+
+    var host = null;
+
+    function ensureHost() {
+      if (!host) {
+        host = document.createElement('div');
+        host.className = 'modal-overlay';
+        host.style.display = 'none';
+        document.body.appendChild(host);
+      }
+      return host;
+    }
+
+    window.kbAsk = function (options, callback) {
+      var opts = options || {};
+      var done = typeof callback === 'function' ? callback : function () {};
+      var hasInput = opts.mode === 'prompt' || typeof opts.input === 'string';
+      var el = ensureHost();
+
+      el.innerHTML =
+        '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="kbask-title" style="max-width:33rem">' +
+          '<div class="modal-header"><div>' +
+            '<span class="modal-eyebrow">' + escapeText(opts.eyebrow || (hasInput ? 'INPUT' : 'CONFIRM')) + '</span>' +
+            '<span id="kbask-title">' + escapeText(opts.title || (hasInput ? '填写信息' : '请确认')) + '</span>' +
+          '</div></div>' +
+          '<div class="modal-body">' +
+            '<p class="admin-copy"' + (hasInput ? '' : ' style="margin-bottom:0"') + '>' + escapeText(opts.message || '') + '</p>' +
+            (hasInput
+              ? '<label class="field" style="margin-top:1rem;display:block">' +
+                  '<span>' + escapeText(opts.inputLabel || '内容') + '</span>' +
+                  '<input type="text" id="kbask-input" value="' + escapeText(opts.value || '') + '"' +
+                  ' placeholder="' + escapeText(opts.placeholder || '') + '">' +
+                '</label>'
+              : '') +
+          '</div>' +
+          '<div class="modal-footer">' +
+            '<button class="toolbar-btn" type="button" data-kb-cancel>' + escapeText(opts.cancelLabel || '取消') + '</button>' +
+            '<button class="primary-btn" type="button" data-kb-ok>' + escapeText(opts.okLabel || '确定') + '</button>' +
+          '</div>' +
+        '</div>';
+
+      el.style.display = 'flex';
+
+      var input = el.querySelector('#kbask-input');
+      var okBtn = el.querySelector('[data-kb-ok]');
+      var cancelBtn = el.querySelector('[data-kb-cancel]');
+      var settled = false;
+
+      function finish(ok) {
+        if (settled) return;
+        settled = true;
+        var value = input ? input.value.trim() : null;
+        el.style.display = 'none';
+        document.removeEventListener('keydown', onKey, true);
+        done(ok, value);
+      }
+
+      function onKey(event) {
+        if (event.key === 'Escape') { event.stopPropagation(); finish(false); return; }
+        if (event.key === 'Enter' && input && document.activeElement === input) {
+          event.preventDefault(); finish(true);
+        }
+      }
+
+      okBtn.addEventListener('click', function () { finish(true); });
+      cancelBtn.addEventListener('click', function () { finish(false); });
+      el.addEventListener('click', function (event) { if (event.target === el) finish(false); });
+      document.addEventListener('keydown', onKey, true);
+
+      window.setTimeout(function () {
+        var focusTarget = input || okBtn;
+        if (focusTarget) focusTarget.focus();
+        if (input) input.select();
+      }, 30);
+    };
+
+    /* ---------------------------------------------- 4. 深色模式切换 */
+    var themeBtn = document.getElementById('theme-toggle');
+    var themeRoot = document.documentElement;
+
+    var syncThemeUi = function () {
+      var dark = themeRoot.getAttribute('data-theme') === 'dark';
+      if (themeBtn) themeBtn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', dark ? '#0E0E0E' : '#FFFFFF');
+    };
+
+    if (themeBtn) {
+      syncThemeUi();
+      themeBtn.addEventListener('click', function () {
+        var dark = themeRoot.getAttribute('data-theme') === 'dark';
+        if (dark) themeRoot.removeAttribute('data-theme');
+        else themeRoot.setAttribute('data-theme', 'dark');
+        try { localStorage.setItem('kb-theme', dark ? 'light' : 'dark'); } catch (e) {}
+        syncThemeUi();
+      });
+    }
+  })();
+  </script>
 </body>
 </html>

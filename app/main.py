@@ -1,16 +1,22 @@
 import re
 import sqlite3
+import mimetypes
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, Field
 
 from . import config, db, ingest, md_render, rag
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+# 字体与常用前端资源的 MIME 修正，避免被识别为 octet-stream 导致浏览器拒绝加载
+for _ext, _mime in ((".ttf", "font/ttf"), (".woff", "font/woff"), (".woff2", "font/woff2"), (".otf", "font/otf")):
+    mimetypes.add_type(_mime, _ext)
 app = FastAPI(title="x公司知识库")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
@@ -47,6 +53,11 @@ class PermissionReviewRequest(BaseModel):
     status: str
 
 
+class ProfileRequest(BaseModel):
+    display_name: Optional[str] = None
+    avatar: Optional[str] = None
+
+
 def _set_session(response: Response, user_id: int):
     response.set_cookie(
         config.SESSION_COOKIE, db.create_session(user_id), httponly=True,
@@ -74,6 +85,13 @@ def _has_library(user, library):
 def _require_library(user, library):
     if not _has_library(user, library):
         raise HTTPException(status_code=403, detail=f"你没有“{library}”知识库权限，请先申请并等待管理员审批")
+
+
+def _library_name(key):
+    for item in db.PERMISSION_CATALOG:
+        if item["key"] == key:
+            return item["name"]
+    return key
 
 
 @app.get("/")
@@ -112,6 +130,35 @@ def logout(request: Request, response: Response):
 @app.get("/api/auth/me")
 def me(user=Depends(current_user)):
     return {"user": user, "quota": db.quota_status(user["id"])}
+
+
+DISPLAY_NAME_RE = re.compile(r"[\u4e00-\u9fffA-Za-z]{1,20}")
+AVATAR_RE = re.compile(r"data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+")
+
+
+@app.get("/api/profile")
+def api_profile(user=Depends(current_user)):
+    profile = db.get_profile(user["id"])
+    if profile is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return profile
+
+
+@app.post("/api/profile")
+def api_update_profile(req: ProfileRequest, user=Depends(current_user)):
+    if req.display_name is None and req.avatar is None:
+        raise HTTPException(status_code=400, detail="没有要修改的内容")
+    display_name = req.display_name
+    if display_name is not None:
+        display_name = display_name.strip()
+        if not DISPLAY_NAME_RE.fullmatch(display_name):
+            raise HTTPException(status_code=400, detail="名称只能包含中文和英文字符（1–20 个）")
+    if req.avatar is not None and (len(req.avatar) > 400_000 or not AVATAR_RE.fullmatch(req.avatar)):
+        raise HTTPException(status_code=400, detail="头像格式不支持或过大，请换一张 300KB 以内的图片")
+    ok, error = db.update_profile(user["id"], display_name, req.avatar)
+    if not ok:
+        raise HTTPException(status_code=429, detail=error)
+    return {"ok": True, "profile": db.get_profile(user["id"])}
 
 
 @app.get("/api/quota")
@@ -200,6 +247,31 @@ def api_ask(req: AskRequest, user=Depends(current_user)):
         result = rag.ask(question, user["id"])
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except AuthenticationError:
+        raise HTTPException(
+            status_code=502,
+            detail="大模型服务认证失败：请检查 .env 中的 DEEPSEEK_API_KEY 是否有效（当前 Key 被服务端拒绝）。",
+        )
+    except RateLimitError:
+        raise HTTPException(
+            status_code=503,
+            detail="大模型服务限流或余额不足，请稍后重试或检查账户额度。",
+        )
+    except APIConnectionError:
+        raise HTTPException(
+            status_code=504,
+            detail="无法连接大模型服务（网络或代理问题），请检查 DEEPSEEK_BASE_URL 与网络连通性。",
+        )
+    except APIStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"大模型服务返回异常状态 {exc.status_code}：{str(exc)[:200]}",
+        )
+    except Exception as exc:  # 兜底：避免把 500 堆栈直接抛给前端
+        raise HTTPException(
+            status_code=500,
+            detail=f"问答处理失败（{type(exc).__name__}）：{str(exc)[:200]}",
+        )
     result["quota"] = quota_info
     return result
 
@@ -278,14 +350,21 @@ def create_doc(req: DocRequest, user=Depends(current_user)):
         raise HTTPException(status_code=400, detail="路径不能为空")
     if not path.lower().endswith(".md"):
         path += ".md"
-    _require_library(user, ingest.library_for_source(path))
+    library = ingest.library_for_source(path)
     full = _resolve_doc(path)
+    # 目录（或同名文档）在文件系统里已存在，但当前用户无该库权限 → 明确提示“已存在，请申请权限”
+    if (full.parent.exists() or full.exists()) and not _has_library(user, library):
+        raise HTTPException(
+            status_code=403,
+            detail=f"该目录已存在，但你没有「{_library_name(library)}」知识库的访问权限，请先申请权限",
+        )
+    _require_library(user, library)
     if full.exists():
         raise HTTPException(status_code=409, detail="文档已存在")
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(req.content, encoding="utf-8")
     chunks = ingest.ingest_one(path, req.content)
-    return {"path": path, "library": ingest.library_for_source(path), "chunks": chunks}
+    return {"path": path, "library": library, "chunks": chunks}
 
 
 @app.put("/api/doc/{path:path}")

@@ -13,6 +13,7 @@ const modalOverlay = document.getElementById('modal-overlay');
 const modalTitle = document.getElementById('modal-title');
 const docNameInput = document.getElementById('doc-name');
 const docDirInput = document.getElementById('doc-dir');
+const newDirBtn = document.getElementById('new-dir-btn');
 const docContentInput = document.getElementById('doc-content');
 const modalSave = document.getElementById('modal-save');
 const modalCancel = document.getElementById('modal-cancel');
@@ -42,7 +43,22 @@ const authKicker = document.getElementById('auth-kicker');
 const authError = document.getElementById('auth-error');
 const userInitial = document.getElementById('user-initial');
 const userName = document.getElementById('user-name');
-const quotaBadge = document.getElementById('quota-badge');
+const userMenuBtn = document.getElementById('user-menu-btn');
+const userPanel = document.getElementById('user-panel');
+const userAvatarBox = document.getElementById('user-avatar');
+const panelAvatar = document.getElementById('panel-avatar');
+const panelName = document.getElementById('panel-name');
+const panelUsername = document.getElementById('panel-username');
+const profileOverlay = document.getElementById('profile-overlay');
+const profileClose = document.getElementById('profile-close');
+const profileCancel = document.getElementById('profile-cancel');
+const profileSave = document.getElementById('profile-save');
+const profileNameInput = document.getElementById('profile-name');
+const profileError = document.getElementById('profile-error');
+const profileQuota = document.getElementById('profile-quota');
+const profileAvatarBtn = document.getElementById('profile-avatar-btn');
+const profileAvatarPreview = document.getElementById('profile-avatar-preview');
+const avatarInput = document.getElementById('avatar-input');
 const quotaReminder = document.getElementById('quota-reminder');
 const adminButton = document.getElementById('admin-btn');
 const adminOverlay = document.getElementById('admin-overlay');
@@ -59,6 +75,56 @@ const permissionClose = document.getElementById('permission-close');
 const permissionDone = document.getElementById('permission-done');
 const permissionState = document.getElementById('permission-state');
 const permissionList = document.getElementById('permission-list');
+
+/* ---------------------------------------------------------------- 交互层适配
+   把原生 alert / confirm / prompt 换成界面内组件（index.html 中的 kbToast / kbAsk）。
+   原生版本是阻塞式的，无法控制样式，也与整体气质不符。
+   - notify()    非阻塞浮层，用于通知类信息
+   - confirmAsk()非阻塞对话框，回调式，替代 confirm
+   - promptAsk() 非阻塞输入框，回调式，替代 prompt
+   注意：这几个名字刻意与业务函数 ask()（RAG 问答）区分，避免覆盖。
+   若增强层未加载（例如直接打开 html 文件），自动回退到原生实现。 */
+function notify(message, kind) {
+  if (typeof window.kbToast === 'function') {
+    window.kbToast(message, { kind: kind || (String(message).includes('失败') ? 'error' : 'info') });
+    return;
+  }
+  window.alert(message);
+}
+
+function confirmAsk(options, onOk) {
+  if (typeof window.kbAsk !== 'function') {
+    if (window.confirm(options.message)) onOk();
+    return;
+  }
+  window.kbAsk({
+    mode: 'confirm',
+    eyebrow: options.eyebrow || 'CONFIRM',
+    title: options.title || '请确认',
+    message: options.message,
+    okLabel: options.okLabel || '确定',
+    cancelLabel: options.cancelLabel || '取消'
+  }, (ok) => { if (ok) onOk(); });
+}
+
+function promptAsk(options, onOk) {
+  if (typeof window.kbAsk !== 'function') {
+    const value = window.prompt(options.message, options.value || '');
+    if (value !== null) onOk((value || '').trim());
+    return;
+  }
+  window.kbAsk({
+    mode: 'prompt',
+    eyebrow: options.eyebrow || 'INPUT',
+    title: options.title || '填写信息',
+    message: options.message,
+    inputLabel: options.inputLabel || '内容',
+    placeholder: options.placeholder || '',
+    value: options.value || '',
+    okLabel: options.okLabel || '确定',
+    cancelLabel: options.cancelLabel || '取消'
+  }, (ok, value) => { if (ok) onOk(value || ''); });
+}
 
 let currentUser = null;
 let authMode = 'login';
@@ -291,16 +357,6 @@ function updateQuota(quota) {
   const used = Number(quota.used) || 0;
   const limit = Number(quota.limit) || 10;
 
-  if (quotaBadge) {
-    quotaBadge.innerHTML = unlimited
-      ? 'AI 咨询 <strong>无限制</strong>'
-      : `今日剩余 <strong>${remaining}</strong> 次`;
-    quotaBadge.title = unlimited
-      ? '管理员不受每日 AI 咨询次数限制'
-      : `今日已使用 ${used} / ${limit} 次`;
-    quotaBadge.hidden = false;
-  }
-
   if (quotaReminder) {
     quotaReminder.innerHTML = unlimited
       ? '<span class="quota-reminder-label">AI 咨询额度</span><strong>无限制</strong>'
@@ -462,33 +518,47 @@ async function loadAdminUsers() {
 async function resetUserQuota(button) {
   const userId = button.dataset.userId;
   const username = button.dataset.username || '该用户';
-  if (!confirm(`确定重置 ${username} 今天的 AI 咨询额度吗？`)) return;
-  button.disabled = true;
-  try {
-    const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-quota`, { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || '重置失败');
-    await loadAdminUsers();
-  } catch (error) {
-    setAdminState(error.message, true);
-    button.disabled = false;
-  }
+  confirmAsk({
+    eyebrow: 'RESET QUOTA',
+    title: '重置今日额度',
+    message: `将把「${username}」今天的 AI 咨询次数清零，重置后可以重新使用 10 次。`,
+    okLabel: '重置额度'
+  }, async () => {
+    button.disabled = true;
+    try {
+      const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-quota`, { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || '重置失败');
+      notify(`已重置「${username}」的今日额度`, 'success');
+      await loadAdminUsers();
+    } catch (error) {
+      setAdminState(error.message, true);
+      button.disabled = false;
+    }
+  });
 }
 
 async function deleteUser(button) {
   const userId = button.dataset.userId;
   const username = button.dataset.username || '该用户';
-  if (!confirm(`确定删除用户“${username}”吗？该用户的会话、问答记录和权限申请都会被删除。`)) return;
-  button.disabled = true;
-  try {
-    const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || '删除用户失败');
-    await loadAdminUsers();
-  } catch (error) {
-    setAdminState(error.message, true);
-    button.disabled = false;
-  }
+  confirmAsk({
+    eyebrow: 'DELETE USER',
+    title: '删除这个用户',
+    message: `将永久删除「${username}」，它的会话、问答记录和权限申请会一并清除。此操作无法撤销。`,
+    okLabel: '删除用户'
+  }, async () => {
+    button.disabled = true;
+    try {
+      const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || '删除用户失败');
+      notify(`已删除用户「${username}」`, 'success');
+      await loadAdminUsers();
+    } catch (error) {
+      setAdminState(error.message, true);
+      button.disabled = false;
+    }
+  });
 }
 
 function openAdminPanel() {
@@ -615,8 +685,47 @@ async function loadDocs() {
   docList.innerHTML = '';
   renderTree(data.tree, docList);
   docCount.textContent = `${countDocs(data.tree)} 篇文档`;
+  populateDirSelect(data.tree);
   filterDocuments(docSearch.value);
 }
+
+function collectDirs(node, prefix, out) {
+  node.dirs.forEach(dir => {
+    const path = prefix ? prefix + '/' + dir.name : dir.name;
+    out.push(path);
+    collectDirs(dir, path, out);
+  });
+}
+
+function populateDirSelect(tree) {
+  const dirs = [];
+  collectDirs(tree, '', dirs);
+  const current = docDirInput.value;
+  docDirInput.innerHTML = dirs.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+  docDirInput.value = current || (dirs[0] || '');
+}
+
+newDirBtn?.addEventListener('click', () => {
+  promptAsk({
+    eyebrow: 'NEW DIRECTORY',
+    title: '新建目录',
+    message: '输入新目录名称，可含多级（如「运营/周报」）。保存文档时会一并创建。',
+    inputLabel: '目录名',
+    placeholder: '如：运营资料',
+    okLabel: '创建'
+  }, (value) => {
+    const name = (value || '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    if (!name) { notify('目录名不能为空', 'error'); return; }
+    const exists = Array.from(docDirInput.options).some(o => o.value === name);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      docDirInput.appendChild(opt);
+    }
+    docDirInput.value = name;
+  });
+});
 
 async function openDoc(path, el, anchor) {
   document.querySelectorAll('.doc-item').forEach(n => n.classList.remove('active'));
@@ -645,12 +754,13 @@ function openModal(mode) {
     docContentInput.value = currentContent;
     docNameInput.disabled = true;
     docDirInput.disabled = true;
+    if (newDirBtn) newDirBtn.disabled = true;
   } else {
     docNameInput.value = '';
-    docDirInput.value = '';
     docContentInput.value = '';
     docNameInput.disabled = false;
     docDirInput.disabled = false;
+    if (newDirBtn) newDirBtn.disabled = false;
   }
   editorPreviewMode = false;
   updateEditorPreview();
@@ -666,7 +776,11 @@ async function saveDoc() {
   const name = docNameInput.value.trim();
   const dir = docDirInput.value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
   const content = docContentInput.value;
-  if (!name) { alert('请输入标题'); return; }
+  if (!name) {
+    notify('请先填写文档标题', 'warn');
+    docNameInput.focus();
+    return;
+  }
 
   const url = editMode ? '/api/doc/' + encodeURIComponent(currentPath) : '/api/doc';
   const method = editMode ? 'PUT' : 'POST';
@@ -680,13 +794,31 @@ async function saveDoc() {
       body: JSON.stringify(body)
     });
     const data = await resp.json();
-    if (!resp.ok) { alert('保存失败：' + (data.detail || '未知错误')); return; }
+    if (!resp.ok) {
+      const detail = data.detail || '未知错误';
+      // 目录已存在但无权限 → 弹窗提示，并引导去申请权限
+      if (resp.status === 403 && detail.includes('请先申请权限')) {
+        confirmAsk({
+          eyebrow: 'NO PERMISSION',
+          title: '该目录已存在',
+          message: detail,
+          okLabel: '去申请权限'
+        }, () => {
+          closeModal();
+          openPermissionPanel();
+        });
+        return;
+      }
+      notify('保存失败：' + detail, 'error');
+      return;
+    }
     const savedPath = editMode ? currentPath : data.path;
     closeModal();
+    notify(`已保存「${savedPath}」`, 'success');
     await loadDocs();
     await openDoc(savedPath);
   } catch (e) {
-    alert('保存失败：' + e.message);
+    notify('保存失败：' + e.message, 'error');
   } finally {
     modalSave.disabled = false;
   }
@@ -694,17 +826,25 @@ async function saveDoc() {
 
 async function deleteDoc() {
   if (!currentPath) return;
-  if (!confirm('确定删除文档「' + currentPath + '」？')) return;
-  const resp = await fetch('/api/doc/' + encodeURIComponent(currentPath), { method: 'DELETE' });
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    alert('删除失败：' + (data.detail || '未知错误'));
-    return;
-  }
-  currentPath = null;
-  viewerToolbar.style.display = 'none';
-  viewer.innerHTML = '<div class="viewer-empty"><div class="viewer-empty-label">文档预览</div><strong>选择一篇文档开始阅读</strong><span>从左侧选择文档，或直接提问。</span></div>';
-  await loadDocs();
+  const target = currentPath;
+  confirmAsk({
+    eyebrow: 'DELETE DOCUMENT',
+    title: '删除这篇文档',
+    message: `将永久删除「${target}」。删除后需要重新上传才能恢复。`,
+    okLabel: '删除文档'
+  }, async () => {
+    const resp = await fetch('/api/doc/' + encodeURIComponent(target), { method: 'DELETE' });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      notify('删除失败：' + (data.detail || '未知错误'), 'error');
+      return;
+    }
+    currentPath = null;
+    viewerToolbar.style.display = 'none';
+    viewer.innerHTML = '<div class="viewer-empty"><div class="document-art" aria-hidden="true"><span></span><i></i><b></b><em></em></div><div class="viewer-empty-label">DOCUMENT PREVIEW</div><strong>选择一篇文档开始阅读</strong><span>从左侧打开一份资料，或先创建一篇 Markdown 文档。</span><div class="viewer-empty-tip"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 7.5h.01"/></svg> 回答里的引用可以直接跳到对应段落</div></div>';
+    notify(`已删除「${target}」`, 'success');
+    await loadDocs();
+  });
 }
 
 askBtn.addEventListener('click', ask);
@@ -714,22 +854,28 @@ questionInput.addEventListener('keydown', (e) => {
 });
 resizeQuestionInput();
 
-ingestBtn.addEventListener('click', async () => {
-  if (!confirm('确认重建索引？这会重新扫描并重建全部文档索引，可能需要一点时间。')) return;
-  setActionLabel(ingestBtn, '索引中...');
-  ingestBtn.disabled = true;
-  try {
-    const resp = await fetch('/api/ingest', { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) { alert('索引失败：' + (data.detail || '未知错误')); return; }
-    alert(`索引完成：${data.files} 篇文档，${data.chunks} 个片段`);
-    loadDocs();
-  } catch (e) {
-    alert('索引失败：' + e.message);
-  } finally {
-    setActionLabel(ingestBtn, '索引');
-    ingestBtn.disabled = false;
-  }
+ingestBtn.addEventListener('click', () => {
+  confirmAsk({
+    eyebrow: 'REINDEX',
+    title: '重建全部索引',
+    message: '将重新扫描文档目录并重建向量与关键词索引。文档较多时需要一两分钟，期间可以继续浏览已有内容。',
+    okLabel: '开始重建'
+  }, async () => {
+    setActionLabel(ingestBtn, '索引中...');
+    ingestBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/ingest', { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) { notify('索引失败：' + (data.detail || '未知错误'), 'error'); return; }
+      notify(`索引完成：${data.files} 篇文档，${data.chunks} 个片段`, 'success');
+      loadDocs();
+    } catch (e) {
+      notify('索引失败：' + e.message, 'error');
+    } finally {
+      setActionLabel(ingestBtn, '索引');
+      ingestBtn.disabled = false;
+    }
+  });
 });
 
 newBtn.addEventListener('click', () => openModal('create'));
@@ -745,12 +891,12 @@ modalOverlay.addEventListener('click', (e) => {
 });
 
 sidebarToggle.addEventListener('click', () => {
-  sidebar.classList.toggle('collapsed');
-  const collapsed = sidebar.classList.contains('collapsed');
-  const toggleLabel = sidebarToggle.querySelector('span');
-  if (toggleLabel) toggleLabel.textContent = collapsed ? '展开' : '收起';
-  sidebarToggle.title = collapsed ? '展开侧栏' : '收起侧栏';
-  sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+  document.body.classList.remove('drawer-open');
+  const drawerBtn = document.getElementById('drawer-toggle');
+  if (drawerBtn) {
+    drawerBtn.setAttribute('aria-expanded', 'false');
+    drawerBtn.setAttribute('aria-label', '打开侧边栏');
+  }
 });
 
 let dragging = false;
@@ -791,50 +937,74 @@ uploadBtn.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', async () => {
   const files = fileInput.files;
   if (!files.length) return;
-  const dir = (prompt('上传到哪个目录？（留空上传到根目录，如：AI知识）', '') || '').trim();
-  const formData = new FormData();
-  for (const f of files) formData.append('files', f);
-  formData.append('dir', dir);
+  const fileCount = files.length;
 
-  setActionLabel(uploadBtn, '上传中...');
-  uploadBtn.disabled = true;
-  try {
-    const resp = await fetch('/api/upload', { method: 'POST', body: formData });
-    const data = await resp.json();
-    if (!resp.ok) { alert('上传失败：' + (data.detail || '未知错误')); return; }
-    alert(`上传成功 ${data.uploaded.length} 个文档`);
-    loadDocs();
-  } catch (e) {
-    alert('上传失败：' + e.message);
-  } finally {
-    setActionLabel(uploadBtn, '上传');
-    uploadBtn.disabled = false;
-    fileInput.value = '';
-  }
+  promptAsk({
+    eyebrow: 'UPLOAD',
+    title: '上传到哪个目录',
+    message: `已选择 ${fileCount} 个 Markdown 文件。填写目标目录名，留空则放在文档库根目录。`,
+    inputLabel: '目录（可选）',
+    placeholder: '如：AI知识',
+    okLabel: '开始上传'
+  }, async (dir) => {
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+    formData.append('dir', dir);
+
+    setActionLabel(uploadBtn, '上传中...');
+    uploadBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (!resp.ok) { notify('上传失败：' + (data.detail || '未知错误'), 'error'); return; }
+      notify(`已上传 ${data.uploaded.length} 个文档`, 'success');
+      loadDocs();
+    } catch (e) {
+      notify('上传失败：' + e.message, 'error');
+    } finally {
+      setActionLabel(uploadBtn, '上传');
+      uploadBtn.disabled = false;
+      fileInput.value = '';
+    }
+  });
 });
 
-syncBtn.addEventListener('click', async () => {
-  const src = (prompt('输入要同步的本地目录路径（该目录下的 .md 文件会被同步）', '') || '').trim();
-  if (!src) return;
-  if (!confirm(`确认同步目录「${src}」？该目录下的 Markdown 文件会写入本地知识库。`)) return;
-  setActionLabel(syncBtn, '同步中...');
-  syncBtn.disabled = true;
-  try {
-    const resp = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_dir: src })
+syncBtn.addEventListener('click', () => {
+  promptAsk({
+    eyebrow: 'SYNC DIRECTORY',
+    title: '同步本地目录',
+    message: '填写本机上存放 Markdown 的目录绝对路径。该目录下的 .md 文件会被复制进知识库，原目录不受影响。',
+    inputLabel: '目录路径',
+    placeholder: '如：D:\\公司文档\\制度',
+    okLabel: '下一步'
+  }, (src) => {
+    if (!src) { notify('没有填写目录路径，已取消同步', 'warn'); return; }
+    confirmAsk({
+      eyebrow: 'CONFIRM SYNC',
+      title: '确认同步',
+      message: `将把「${src}」下的所有 Markdown 文件写入本地知识库。同名文件会被覆盖。`,
+      okLabel: '确认同步'
+    }, async () => {
+      setActionLabel(syncBtn, '同步中...');
+      syncBtn.disabled = true;
+      try {
+        const resp = await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_dir: src })
+        });
+        const data = await resp.json();
+        if (!resp.ok) { notify('同步失败：' + (data.detail || '未知错误'), 'error'); return; }
+        notify(`已同步 ${data.count} 个文档`, 'success');
+        loadDocs();
+      } catch (e) {
+        notify('同步失败：' + e.message, 'error');
+      } finally {
+        setActionLabel(syncBtn, '同步');
+        syncBtn.disabled = false;
+      }
     });
-    const data = await resp.json();
-    if (!resp.ok) { alert('同步失败：' + (data.detail || '未知错误')); return; }
-    alert(`同步成功 ${data.count} 个文档`);
-    loadDocs();
-  } catch (e) {
-    alert('同步失败：' + e.message);
-  } finally {
-    setActionLabel(syncBtn, '同步');
-    syncBtn.disabled = false;
-  }
+  });
 });
 
 document.querySelectorAll('[data-format]').forEach(button => {
@@ -898,12 +1068,14 @@ function enterWorkspace(payload) {
   currentUser = payload.user;
   updateRoleControls();
   userName.textContent = currentUser.username;
-  userInitial.textContent = currentUser.username.slice(0, 2).toUpperCase();
+  renderAvatar(userAvatarBox, null, currentUser.username);
+  renderAvatar(panelAvatar, null, currentUser.username);
   if (adminButton) adminButton.hidden = currentUser.role !== 'admin';
   updateQuota(payload.quota);
   authGate.style.display = 'none';
   document.body.classList.remove('auth-locked');
   loadDocs();
+  loadProfile().then(applyUserProfile).catch(() => {});
 }
 
 async function initAuth() {
@@ -919,10 +1091,206 @@ async function initAuth() {
   authUsername.focus();
 }
 
-document.querySelector('.workspace-user')?.addEventListener('click', async () => {
-  if (!currentUser || !confirm('退出当前账号？')) return;
-  await fetch('/api/auth/logout', { method: 'POST' });
+/* ---------------- 用户菜单（头像面板） + 编辑资料 ---------------- */
+
+let currentProfile = null;
+let profileOriginal = null;
+let profileDraftAvatar = null;
+
+function renderAvatar(box, profile, fallbackName) {
+  if (!box) return;
+  if (profile && profile.avatar) {
+    box.innerHTML = `<img src="${profile.avatar}" alt="">`;
+    return;
+  }
+  box.innerHTML = '';
+  const initial = document.createElement('span');
+  initial.id = box.id === 'user-avatar' ? 'user-initial' : '';
+  initial.textContent = (fallbackName || 'KB').slice(0, 2).toUpperCase();
+  box.appendChild(initial);
+}
+
+function applyUserProfile(profile) {
+  if (!profile) return;
+  currentProfile = profile;
+  const display = profile.display_name || (currentUser && currentUser.username) || '';
+  userName.textContent = display;
+  renderAvatar(userAvatarBox, profile, display);
+  renderAvatar(panelAvatar, profile, display);
+  if (panelName) panelName.textContent = display;
+  if (panelUsername) panelUsername.textContent = '@' + profile.username;
+}
+
+async function loadProfile() {
+  const resp = await fetch('/api/profile');
+  if (!resp.ok) throw new Error('load profile failed');
+  return resp.json();
+}
+
+function setUserPanel(open) {
+  if (!userPanel || !userMenuBtn) return;
+  userPanel.hidden = !open;
+  userMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+userMenuBtn?.addEventListener('click', event => {
+  event.stopPropagation();
+  if (!currentUser) return;
+  setUserPanel(userPanel.hidden);
+});
+
+document.addEventListener('click', event => {
+  if (!userPanel || userPanel.hidden) return;
+  if (event.target.closest && event.target.closest('.user-menu-wrap')) return;
+  setUserPanel(false);
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && userPanel && !userPanel.hidden) setUserPanel(false);
+});
+
+userPanel?.querySelector('[data-user-action="switch"]')?.addEventListener('click', async () => {
+  setUserPanel(false);
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* 忽略网络错误，仍回到登录页 */ }
   window.location.reload();
+});
+
+userPanel?.querySelector('[data-user-action="logout"]')?.addEventListener('click', () => {
+  setUserPanel(false);
+  const name = (currentProfile && currentProfile.display_name) || (currentUser && currentUser.username) || '';
+  confirmAsk({
+    eyebrow: 'SIGN OUT',
+    title: '退出当前账号',
+    message: `将以「${name}」的身份退出。你的文档和问答记录都保存在本地，下次登录还在。`,
+    okLabel: '退出登录'
+  }, async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.reload();
+  });
+});
+
+userPanel?.querySelector('[data-user-action="profile"]')?.addEventListener('click', () => {
+  setUserPanel(false);
+  openProfileModal();
+});
+
+function showProfileError(message) {
+  if (!profileError) return;
+  if (!message) { profileError.hidden = true; profileError.textContent = ''; return; }
+  profileError.textContent = message;
+  profileError.hidden = false;
+}
+
+function updateProfileQuota(profile) {
+  if (profileQuota) {
+    profileQuota.innerHTML = `本月剩余修改次数：<b>${profile.edits_left} / ${profile.edits_limit}</b>`;
+  }
+}
+
+async function openProfileModal() {
+  showProfileError('');
+  profileDraftAvatar = null;
+  profileAvatarPreview.innerHTML = '';
+  try {
+    profileOriginal = await loadProfile();
+  } catch (error) {
+    notify('加载资料失败，请稍后再试', 'error');
+    return;
+  }
+  const display = profileOriginal.display_name || profileOriginal.username || '';
+  profileNameInput.value = display;
+  if (profileOriginal.avatar) {
+    profileAvatarPreview.innerHTML = `<img src="${profileOriginal.avatar}" alt="">`;
+  } else {
+    profileAvatarPreview.textContent = display.slice(0, 1).toUpperCase() || 'K';
+  }
+  updateProfileQuota(profileOriginal);
+  profileOverlay.style.display = 'flex';
+  profileNameInput.focus();
+}
+
+function closeProfileModal() {
+  if (!profileOverlay) return;
+  profileOverlay.style.display = 'none';
+  profileDraftAvatar = null;
+  showProfileError('');
+}
+
+profileClose?.addEventListener('click', closeProfileModal);
+profileCancel?.addEventListener('click', closeProfileModal);
+profileOverlay?.addEventListener('click', event => { if (event.target === profileOverlay) closeProfileModal(); });
+
+profileAvatarBtn?.addEventListener('click', () => avatarInput.click());
+
+/* 头像压缩：居中裁方 → canvas 缩放到 256px → JPEG dataURL（约 20-40KB） */
+function compressAvatar(file, size) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { reject(new Error('type')); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+avatarInput?.addEventListener('change', () => {
+  const file = avatarInput.files && avatarInput.files[0];
+  avatarInput.value = '';
+  if (!file) return;
+  compressAvatar(file, 256)
+    .then(dataUrl => {
+      profileDraftAvatar = dataUrl;
+      profileAvatarPreview.innerHTML = `<img src="${dataUrl}" alt="">`;
+    })
+    .catch(() => notify('图片读取失败，请换一张 JPG / PNG / WebP 试试', 'error'));
+});
+
+profileSave?.addEventListener('click', async () => {
+  showProfileError('');
+  const nextName = profileNameInput.value.trim();
+  const prevName = (profileOriginal && profileOriginal.display_name) || '';
+  const body = {};
+  if (nextName !== prevName) body.display_name = nextName;
+  if (profileDraftAvatar && profileDraftAvatar !== ((profileOriginal && profileOriginal.avatar) || null)) {
+    body.avatar = profileDraftAvatar;
+  }
+  if (!body.display_name && !body.avatar) {
+    closeProfileModal();
+    return;
+  }
+  if (body.display_name && !/^[\u4e00-\u9fffA-Za-z]{1,20}$/.test(body.display_name)) {
+    showProfileError('名称只能包含中文和英文字符（1–20 个）');
+    return;
+  }
+  profileSave.disabled = true;
+  try {
+    const resp = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '保存失败');
+    applyUserProfile(data.profile);
+    updateProfileQuota(data.profile);
+    notify('资料已更新', 'success');
+    closeProfileModal();
+  } catch (error) {
+    showProfileError(error.message || '保存失败，请稍后再试');
+  } finally {
+    profileSave.disabled = false;
+  }
 });
 
 adminButton?.addEventListener('click', openAdminPanel);
@@ -958,7 +1326,18 @@ authForm.addEventListener('submit', async event => {
 initAuth();
 
 helpButton?.addEventListener('click', () => {
-  alert('使用说明：从左侧选择文档查看内容，也可以直接在下方输入问题。新建文档时可使用 Markdown 工具栏插入标题、列表、代码和表格。');
+  if (typeof window.kbAsk === 'function') {
+    window.kbAsk({
+      eyebrow: 'HOW TO USE',
+      title: '使用说明',
+      message: '左侧是文档库，点开目录里的文件即可阅读；文档里的标题会成为回答的引用锚点。中间输入框可以直接提问，按回车发送、Shift + 回车换行，回答下方会列出出处，点一下就能跳到原文位置。'
+        + '新建文档时可以使用上方工具栏插入标题、列表、代码和表格，Ctrl + S 保存。'
+        + '如果某类资料看不到，说明你还没有那类知识库的权限，点右上角「我的权限」申请，管理员审批后即可使用。',
+      okLabel: '知道了'
+    }, () => {});
+    return;
+  }
+  window.alert('使用说明：从左侧选择文档查看内容，也可以直接在下方输入问题。新建文档时可使用 Markdown 工具栏插入标题、列表、代码和表格。');
 });
 
 docSearch.addEventListener('input', () => filterDocuments(docSearch.value));

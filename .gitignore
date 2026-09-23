@@ -1,9 +1,13 @@
 .env
+.env.bak*
 data/
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Local backups
+_backup_*/
 
 # Private knowledge-base documents: never publish these by default.
 /docs/*

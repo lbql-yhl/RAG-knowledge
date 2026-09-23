@@ -129,6 +129,14 @@ def init_db():
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "role" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        if "display_name" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+        if "avatar" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
+        if "profile_edit_month" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN profile_edit_month TEXT NOT NULL DEFAULT ''")
+        if "profile_edit_count" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN profile_edit_count INTEGER NOT NULL DEFAULT 0")
         for item in PERMISSION_CATALOG:
             conn.execute(
                 "INSERT INTO permission_catalog(permission_key, name, description) VALUES (?, ?, ?) ON CONFLICT(permission_key) DO UPDATE SET name=excluded.name, description=excluded.description",
@@ -390,6 +398,65 @@ def delete_user(user_id, actor_id):
             return "admin"
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     return "deleted"
+
+
+# ---- 用户资料（显示名称 / 头像，每月限改 2 次） ----
+
+PROFILE_EDIT_LIMIT = 2
+
+
+def _profile_month():
+    return _today()[:7]  # YYYY-MM（UTC+8 自然月）
+
+
+def get_profile(user_id):
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT username, display_name, avatar, profile_edit_month, profile_edit_count FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    used = row["profile_edit_count"] if row["profile_edit_month"] == _profile_month() else 0
+    return {
+        "username": row["username"],
+        "display_name": row["display_name"] or row["username"],
+        "avatar": row["avatar"] or None,
+        "edits_used": used,
+        "edits_limit": PROFILE_EDIT_LIMIT,
+        "edits_left": max(0, PROFILE_EDIT_LIMIT - used),
+    }
+
+
+def update_profile(user_id, display_name=None, avatar=None):
+    """修改显示名称 / 头像。参数为 None 表示该项不修改。
+
+    返回 (ok, error)。内容没有任何实际变化时不消耗当月次数。"""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT username, display_name, avatar, profile_edit_month, profile_edit_count FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            return False, "用户不存在"
+        current_name = row["display_name"] or row["username"]
+        current_avatar = row["avatar"] or ""
+        changed = (display_name is not None and display_name != current_name) or (
+            avatar is not None and avatar != current_avatar
+        )
+        if not changed:
+            return True, None
+        month = _profile_month()
+        used = row["profile_edit_count"] if row["profile_edit_month"] == month else 0
+        if used >= PROFILE_EDIT_LIMIT:
+            return False, f"本月资料修改次数已用完（每月 {PROFILE_EDIT_LIMIT} 次），下个月再试"
+        new_name = display_name if display_name is not None else current_name
+        new_avatar = avatar if avatar is not None else current_avatar
+        conn.execute(
+            "UPDATE users SET display_name = ?, avatar = ?, profile_edit_month = ?, profile_edit_count = ? WHERE id = ?",
+            (new_name, new_avatar, month, used + 1, user_id),
+        )
+    return True, None
 
 
 def set_admin(username, password):
