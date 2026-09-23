@@ -98,5 +98,7 @@ web/                 前端页面
 .env.example         环境变量模板
 ```
 ## 界面预览
+<img width="1918" height="900" alt="image" src="https://github.com/user-attachments/assets/4dfb5b95-5eae-4ea8-b588-c0fbd2c41308" />
+<img width="738" height="589" alt="image" src="https://github.com/user-attachments/assets/c87eca95-714f-446c-9374-0e886a47e74f" />
 
 ![AI Knowledge Base dashboard](assets/screenshots/knowledge-base-dashboard.png)
