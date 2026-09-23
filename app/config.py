@@ -25,6 +25,12 @@ SESSION_COOKIE = "kb_session"
 
 COLLECTION_NAME = "knowledge_docs"
 TOP_K = int(os.getenv("TOP_K", "5"))
+HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "12"))
+RRF_K = int(os.getenv("RRF_K", "60"))
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "3"))
+RERANK_ENABLED = os.getenv("RERANK_ENABLED", "1").lower() not in {"0", "false", "no"}
+RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
+MIN_VECTOR_SCORE = float(os.getenv("MIN_VECTOR_SCORE", "0.35"))
 
 QDRANT_PATH = (BASE_DIR / QDRANT_PATH) if not os.path.isabs(QDRANT_PATH) else Path(QDRANT_PATH)
 DOCS_DIR = (BASE_DIR / DOCS_DIR) if not os.path.isabs(DOCS_DIR) else Path(DOCS_DIR)

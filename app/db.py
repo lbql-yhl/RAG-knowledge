@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,14 @@ from pathlib import Path
 from . import config
 
 _DB_PATH = Path(config.DB_PATH)
+PERMISSION_CATALOG = (
+    {"key": "ops", "name": "运维", "description": "服务器、网络、安全与发布运维资料"},
+    {"key": "ai", "name": "人工智能", "description": "模型、Agent、提示词与知识库资料"},
+    {"key": "dev", "name": "开发", "description": "产品研发、代码规范与工程技术资料"},
+    {"key": "ops_business", "name": "运营", "description": "业务流程、客户服务与运营规范资料"},
+    {"key": "hr", "name": "HR", "description": "人事制度、招聘、培训与员工服务资料"},
+)
+PERMISSION_KEYS = {item["key"] for item in PERMISSION_CATALOG}
 
 
 def _now():
@@ -15,7 +24,6 @@ def _now():
 
 
 def _today():
-    # Keep the product's daily allowance aligned with Asia/Shanghai without a tzdata package.
     return (datetime.now(timezone.utc) + timedelta(hours=8)).date().isoformat()
 
 
@@ -81,12 +89,90 @@ def init_db():
                 note TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS permission_catalog (
+                permission_key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS permission_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                permission_key TEXT NOT NULL REFERENCES permission_catalog(permission_key) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+                requested_at TEXT NOT NULL,
+                reviewed_at TEXT,
+                reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE(user_id, permission_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_permission_requests_status ON permission_requests(status, requested_at DESC);
+            CREATE TABLE IF NOT EXISTS search_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                title TEXT NOT NULL,
+                heading TEXT NOT NULL DEFAULT '',
+                text TEXT NOT NULL,
+                library TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_search_chunks_source ON search_chunks(source);
+            CREATE INDEX IF NOT EXISTS idx_search_chunks_library ON search_chunks(library);
+            CREATE VIRTUAL TABLE IF NOT EXISTS search_chunks_fts USING fts5(
+                chunk_id UNINDEXED,
+                source,
+                title,
+                heading,
+                text,
+                library UNINDEXED,
+                tokenize = 'unicode61'
+            );
             """
         )
-        # Lightweight migration for databases created before role support was added.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "role" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        for item in PERMISSION_CATALOG:
+            conn.execute(
+                "INSERT INTO permission_catalog(permission_key, name, description) VALUES (?, ?, ?) ON CONFLICT(permission_key) DO UPDATE SET name=excluded.name, description=excluded.description",
+                (item["key"], item["name"], item["description"]),
+            )
+        _rebuild_fts_index(conn)
+
+
+def _fts_terms(value):
+    """将中文拆成二元词，避免 SQLite unicode61 把整段中文当成一个词。"""
+    terms = []
+    for part in re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9_]+", (value or "").lower()):
+        if re.fullmatch(r"[\u4e00-\u9fff]+", part):
+            if len(part) == 1:
+                terms.append(part)
+            else:
+                terms.extend(part[i:i + 2] for i in range(len(part) - 1))
+        else:
+            terms.append(part)
+    return list(dict.fromkeys(terms))
+
+
+def _fts_index_text(value):
+    return " ".join(_fts_terms(value))
+
+
+def _fts_query(value):
+    terms = _fts_terms(value)
+    return " OR ".join(f'"{term.replace(chr(34), "")}"' for term in terms)
+
+
+def _rebuild_fts_index(conn):
+    """search_chunks_fts 是派生索引，启动时重建以兼容旧版本索引。"""
+    conn.execute("DELETE FROM search_chunks_fts")
+    rows = conn.execute("SELECT chunk_id, source, title, heading, text, library FROM search_chunks").fetchall()
+    conn.executemany(
+        """INSERT INTO search_chunks_fts(chunk_id, source, title, heading, text, library)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            (row["chunk_id"], _fts_index_text(row["source"]), _fts_index_text(row["title"]),
+             _fts_index_text(row["heading"]), _fts_index_text(row["text"]), row["library"])
+            for row in rows
+        ],
+    )
 
 
 def _hash_password(password):
@@ -109,6 +195,13 @@ def _verify_password(password, encoded):
         return False
 
 
+def _user_dict(row, include_permissions=False):
+    result = {"id": row["id"], "username": row["username"], "role": row["role"]}
+    if include_permissions:
+        result["permissions"] = approved_permissions(row["id"])
+    return result
+
+
 def create_user(username, password, role="user"):
     username = username.strip()
     with _connect() as conn:
@@ -119,7 +212,7 @@ def create_user(username, password, role="user"):
             )
         except sqlite3.IntegrityError:
             return None
-        return {"id": cur.lastrowid, "username": username, "role": role}
+        return {"id": cur.lastrowid, "username": username, "role": role, "permissions": []}
 
 
 def authenticate(username, password):
@@ -127,7 +220,7 @@ def authenticate(username, password):
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username.strip(),)).fetchone()
     if not row or not _verify_password(password, row["password_hash"]):
         return None
-    return {"id": row["id"], "username": row["username"], "role": row["role"]}
+    return _user_dict(row, include_permissions=True)
 
 
 def create_session(user_id, days=14):
@@ -156,7 +249,7 @@ def get_user_by_session(token):
         if datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
             conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
             return None
-        return {"id": row["id"], "username": row["username"], "role": row["role"]}
+        return _user_dict(row, include_permissions=True)
 
 
 def delete_session(token):
@@ -267,7 +360,8 @@ def list_users():
         ).fetchall()
     return [
         {"id": row["id"], "username": row["username"], "role": row["role"],
-         "created_at": row["created_at"], "quota": quota_status(row["id"])}
+         "created_at": row["created_at"], "quota": quota_status(row["id"]),
+         "permissions": permission_statuses(row["id"])}
         for row in rows
     ]
 
@@ -282,6 +376,20 @@ def reset_quota(user_id):
             (user_id, _today()),
         )
     return True
+
+
+def delete_user(user_id, actor_id):
+    """删除普通用户；禁止管理员删除自己或其他管理员账号。"""
+    with _connect() as conn:
+        target = conn.execute("SELECT id, role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not target:
+            return "not_found"
+        if target["id"] == actor_id:
+            return "self"
+        if target["role"] == "admin":
+            return "admin"
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    return "deleted"
 
 
 def set_admin(username, password):
@@ -300,7 +408,176 @@ def set_admin(username, password):
                 (username, _hash_password(password), _now()),
             )
             user_id = cur.lastrowid
-    return {"id": user_id, "username": username, "role": "admin"}
+    return {"id": user_id, "username": username, "role": "admin", "permissions": list(PERMISSION_KEYS)}
+
+
+# ---- 权限 ----
+
+def list_permissions():
+    return [dict(item) for item in PERMISSION_CATALOG]
+
+
+def approved_permissions(user_id):
+    with _connect() as conn:
+        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row and row["role"] == "admin":
+            return sorted(PERMISSION_KEYS)
+        rows = conn.execute(
+            "SELECT permission_key FROM permission_requests WHERE user_id = ? AND status = 'approved'",
+            (user_id,),
+        ).fetchall()
+    return [row["permission_key"] for row in rows]
+
+
+def permission_statuses(user_id):
+    with _connect() as conn:
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        rows = conn.execute(
+            """SELECT c.permission_key, c.name, c.description,
+                      COALESCE(r.status, 'none') AS status, r.id AS request_id,
+                      r.requested_at, r.reviewed_at
+               FROM permission_catalog c
+               LEFT JOIN permission_requests r
+                 ON r.permission_key = c.permission_key AND r.user_id = ?
+               ORDER BY c.rowid""",
+            (user_id,),
+        ).fetchall()
+    result = [dict(row) for row in rows]
+    if user and user["role"] == "admin":
+        for item in result:
+            item["status"] = "approved"
+    return result
+
+
+def has_permission(user_id, permission_key):
+    if permission_key not in PERMISSION_KEYS:
+        return False
+    with _connect() as conn:
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if user and user["role"] == "admin":
+            return True
+        row = conn.execute(
+            "SELECT 1 FROM permission_requests WHERE user_id = ? AND permission_key = ? AND status = 'approved'",
+            (user_id, permission_key),
+        ).fetchone()
+    return bool(row)
+
+
+def request_permission(user_id, permission_key):
+    if permission_key not in PERMISSION_KEYS:
+        return None
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO permission_requests(user_id, permission_key, status, requested_at)
+               VALUES (?, ?, 'pending', ?)
+               ON CONFLICT(user_id, permission_key) DO UPDATE SET
+                 status = CASE WHEN permission_requests.status = 'approved' THEN 'approved' ELSE 'pending' END,
+                 requested_at = CASE WHEN permission_requests.status = 'approved' THEN permission_requests.requested_at ELSE excluded.requested_at END,
+                 reviewed_at = CASE WHEN permission_requests.status = 'approved' THEN permission_requests.reviewed_at ELSE NULL END,
+                 reviewed_by = CASE WHEN permission_requests.status = 'approved' THEN permission_requests.reviewed_by ELSE NULL END""",
+            (user_id, permission_key, _now()),
+        )
+        row = conn.execute(
+            "SELECT * FROM permission_requests WHERE user_id = ? AND permission_key = ?",
+            (user_id, permission_key),
+        ).fetchone()
+    return dict(row)
+
+
+def list_permission_requests(status=None):
+    with _connect() as conn:
+        sql = """SELECT r.id, r.user_id, u.username, r.permission_key, c.name, c.description,
+                         r.status, r.requested_at, r.reviewed_at, r.reviewed_by
+                  FROM permission_requests r
+                  JOIN users u ON u.id = r.user_id
+                  JOIN permission_catalog c ON c.permission_key = r.permission_key"""
+        params = []
+        if status:
+            sql += " WHERE r.status = ?"
+            params.append(status)
+        sql += " ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.requested_at DESC"
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
+def review_permission(request_id, status, reviewer_id):
+    if status not in {"approved", "rejected"}:
+        return None
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE permission_requests SET status = ?, reviewed_at = ?, reviewed_by = ?
+               WHERE id = ?""",
+            (status, _now(), reviewer_id, request_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute(
+            """SELECT r.id, r.user_id, u.username, r.permission_key, c.name, c.description,
+                      r.status, r.requested_at, r.reviewed_at, r.reviewed_by
+               FROM permission_requests r JOIN users u ON u.id=r.user_id
+               JOIN permission_catalog c ON c.permission_key=r.permission_key WHERE r.id = ?""",
+            (request_id,),
+        ).fetchone()
+    return dict(row)
+
+
+# ---- 混合检索的 BM25 索引 ----
+
+def replace_search_chunks(source, chunks):
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM search_chunks_fts WHERE chunk_id IN (SELECT chunk_id FROM search_chunks WHERE source = ?)",
+            (source,),
+        )
+        conn.execute("DELETE FROM search_chunks WHERE source = ?", (source,))
+        for chunk in chunks:
+            row = {
+                "chunk_id": chunk["id"], "source": chunk["source"], "title": chunk.get("title", ""),
+                "heading": chunk.get("heading", ""), "text": chunk.get("text", ""),
+                "library": chunk.get("library", "ops_business"),
+            }
+            conn.execute(
+                "INSERT OR REPLACE INTO search_chunks(chunk_id, source, title, heading, text, library) VALUES (:chunk_id, :source, :title, :heading, :text, :library)",
+                row,
+            )
+            conn.execute(
+                "INSERT INTO search_chunks_fts(chunk_id, source, title, heading, text, library) VALUES (?, ?, ?, ?, ?, ?)",
+                (row["chunk_id"], _fts_index_text(row["source"]), _fts_index_text(row["title"]),
+                 _fts_index_text(row["heading"]), _fts_index_text(row["text"]), row["library"]),
+            )
+
+
+def delete_search_source(source):
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM search_chunks_fts WHERE chunk_id IN (SELECT chunk_id FROM search_chunks WHERE source = ?)",
+            (source,),
+        )
+        conn.execute("DELETE FROM search_chunks WHERE source = ?", (source,))
+
+
+def search_bm25(query, libraries, limit=20):
+    if not libraries:
+        return []
+    match = _fts_query(query)
+    if not match:
+        return []
+    placeholders = ",".join("?" for _ in libraries)
+    sql = f"""SELECT f.chunk_id, c.source, c.title, c.heading, c.text, c.library,
+                      bm25(search_chunks_fts) AS bm25_score
+               FROM search_chunks_fts AS f
+               JOIN search_chunks AS c ON c.chunk_id = f.chunk_id
+               WHERE search_chunks_fts MATCH ? AND c.library IN ({placeholders})
+               ORDER BY bm25_score ASC LIMIT ?"""
+    with _connect() as conn:
+        rows = conn.execute(sql, [match, *libraries, max(limit * 4, 40)]).fetchall()
+    rows = [dict(row) for row in rows]
+    # 中文 FTS 使用二元词。要求命中查询首/尾锚点，避免“完全不存在的词”
+    # 仅因包含一个常见二元词而被当成有效证据。
+    cjk_runs = re.findall(r"[\u4e00-\u9fff]+", query.lower())
+    anchors = {run[:2] for run in cjk_runs if len(run) >= 2} | {run[-2:] for run in cjk_runs if len(run) >= 2}
+    if anchors:
+        rows = [row for row in rows if anchors.intersection(_fts_terms(row["text"]))]
+    return rows[:limit]
 
 
 init_db()

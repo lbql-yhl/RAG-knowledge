@@ -51,6 +51,14 @@ const adminCancel = document.getElementById('admin-cancel');
 const adminRefresh = document.getElementById('admin-refresh');
 const adminUsersState = document.getElementById('admin-users-state');
 const adminUsersList = document.getElementById('admin-users-list');
+const adminRequestsState = document.getElementById('admin-requests-state');
+const adminRequestsList = document.getElementById('admin-requests-list');
+const permissionButton = document.getElementById('permission-btn');
+const permissionOverlay = document.getElementById('permission-overlay');
+const permissionClose = document.getElementById('permission-close');
+const permissionDone = document.getElementById('permission-done');
+const permissionState = document.getElementById('permission-state');
+const permissionList = document.getElementById('permission-list');
 
 let currentUser = null;
 let authMode = 'login';
@@ -305,6 +313,68 @@ function updateQuota(quota) {
   }
 }
 
+function setPermissionState(message, isError = false) {
+  if (!permissionState) return;
+  permissionState.textContent = message || '';
+  permissionState.hidden = !message;
+  permissionState.classList.toggle('error', isError);
+}
+
+function renderPermissions(items) {
+  if (!permissionList) return;
+  permissionList.innerHTML = (items || []).map(item => {
+    const status = item.status || 'none';
+    const labels = { approved: '已通过', pending: '待审批', rejected: '已拒绝', none: '未申请' };
+    const action = status === 'approved'
+      ? '<span class="permission-status approved">已授权</span>'
+      : status === 'pending'
+        ? '<span class="permission-status pending">等待审批</span>'
+        : `<button class="permission-request-btn" type="button" data-permission-key="${escapeHtml(item.permission_key || item.key)}">申请权限</button>`;
+    return `<div class="permission-row"><div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.description || '')}</span></div><div>${action}<small class="permission-label">${labels[status]}</small></div></div>`;
+  }).join('') || '<div class="admin-empty">暂无可申请的知识库。</div>';
+  permissionList.querySelectorAll('.permission-request-btn').forEach(button => {
+    button.addEventListener('click', () => requestPermission(button));
+  });
+}
+
+async function loadPermissions() {
+  setPermissionState('正在加载权限…');
+  try {
+    const resp = await fetch('/api/permissions');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '加载权限失败');
+    setPermissionState(data.is_admin ? '管理员拥有全部知识库权限。' : '申请后由管理员审批，通过后即可查看对应库文档。');
+    renderPermissions(data.permissions || []);
+  } catch (error) {
+    setPermissionState(error.message, true);
+  }
+}
+
+async function requestPermission(button) {
+  const key = button.dataset.permissionKey;
+  button.disabled = true;
+  try {
+    const resp = await fetch(`/api/permissions/${encodeURIComponent(key)}/request`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '申请失败');
+    renderPermissions(data.permissions || []);
+    await loadDocs();
+  } catch (error) {
+    setPermissionState(error.message, true);
+    button.disabled = false;
+  }
+}
+
+function openPermissionPanel() {
+  if (!permissionOverlay) return;
+  permissionOverlay.style.display = 'flex';
+  loadPermissions();
+}
+
+function closePermissionPanel() {
+  if (permissionOverlay) permissionOverlay.style.display = 'none';
+}
+
 function setAdminState(message, isError = false) {
   if (!adminUsersState) return;
   adminUsersState.textContent = message || '';
@@ -324,12 +394,55 @@ function renderAdminUsers(users) {
     const quotaLabel = isAdmin || quota.unlimited ? '无限制' : `剩余 ${Number(quota.remaining) || 0} / ${quota.limit || 10} 次`;
     const action = isAdmin
       ? '<span class="admin-role">管理员</span>'
-      : `<button class="admin-reset-btn" type="button" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">重置今日额度</button>`;
+      : `<div class="admin-user-actions"><button class="admin-reset-btn" type="button" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">重置今日额度</button><button class="admin-delete-btn" type="button" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">删除用户</button></div>`;
     return `<div class="admin-user-row"><div class="admin-user-main"><strong>${escapeHtml(user.username)}</strong><span>${quotaLabel}</span></div><div class="admin-user-action">${action}</div></div>`;
   }).join('');
   adminUsersList.querySelectorAll('.admin-reset-btn').forEach(button => {
     button.addEventListener('click', () => resetUserQuota(button));
   });
+  adminUsersList.querySelectorAll('.admin-delete-btn').forEach(button => {
+    button.addEventListener('click', () => deleteUser(button));
+  });
+}
+
+function setAdminRequestsState(message, isError = false) {
+  if (!adminRequestsState) return;
+  adminRequestsState.textContent = message || '';
+  adminRequestsState.hidden = !message;
+  adminRequestsState.classList.toggle('error', isError);
+}
+
+function renderAdminRequests(requests) {
+  if (!adminRequestsList) return;
+  const pending = (requests || []).filter(item => item.status === 'pending');
+  adminRequestsList.innerHTML = pending.length ? pending.map(item => `<div class="admin-user-row permission-admin-row"><div class="admin-user-main"><strong>${escapeHtml(item.username)}</strong><span>申请「${escapeHtml(item.name)}」</span></div><div class="admin-user-action"><button class="admin-approve-btn" type="button" data-request-id="${item.id}" data-request-status="approved">通过</button><button class="admin-reject-btn" type="button" data-request-id="${item.id}" data-request-status="rejected">拒绝</button></div></div>`).join('') : '<div class="admin-empty">暂无待审批申请。</div>';
+  adminRequestsList.querySelectorAll('[data-request-id]').forEach(button => button.addEventListener('click', () => reviewPermission(button)));
+}
+
+async function loadAdminRequests() {
+  setAdminRequestsState('正在加载申请…');
+  try {
+    const resp = await fetch('/api/admin/permission-requests');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '加载申请失败');
+    setAdminRequestsState('');
+    renderAdminRequests(data.requests || []);
+  } catch (error) {
+    setAdminRequestsState(error.message, true);
+  }
+}
+
+async function reviewPermission(button) {
+  button.disabled = true;
+  try {
+    const resp = await fetch(`/api/admin/permission-requests/${encodeURIComponent(button.dataset.requestId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: button.dataset.requestStatus }) });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '审批失败');
+    await loadAdminRequests();
+  } catch (error) {
+    setAdminRequestsState(error.message, true);
+    button.disabled = false;
+  }
 }
 
 async function loadAdminUsers() {
@@ -362,10 +475,27 @@ async function resetUserQuota(button) {
   }
 }
 
+async function deleteUser(button) {
+  const userId = button.dataset.userId;
+  const username = button.dataset.username || '该用户';
+  if (!confirm(`确定删除用户“${username}”吗？该用户的会话、问答记录和权限申请都会被删除。`)) return;
+  button.disabled = true;
+  try {
+    const resp = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '删除用户失败');
+    await loadAdminUsers();
+  } catch (error) {
+    setAdminState(error.message, true);
+    button.disabled = false;
+  }
+}
+
 function openAdminPanel() {
   if (!adminOverlay || !currentUser || currentUser.role !== 'admin') return;
   adminOverlay.style.display = 'flex';
   loadAdminUsers();
+  loadAdminRequests();
 }
 
 function closeAdminPanel() {
@@ -798,7 +928,11 @@ document.querySelector('.workspace-user')?.addEventListener('click', async () =>
 adminButton?.addEventListener('click', openAdminPanel);
 adminClose?.addEventListener('click', closeAdminPanel);
 adminCancel?.addEventListener('click', closeAdminPanel);
-adminRefresh?.addEventListener('click', loadAdminUsers);
+adminRefresh?.addEventListener('click', () => { loadAdminUsers(); loadAdminRequests(); });
+permissionButton?.addEventListener('click', openPermissionPanel);
+permissionClose?.addEventListener('click', closePermissionPanel);
+permissionDone?.addEventListener('click', closePermissionPanel);
+permissionOverlay?.addEventListener('click', event => { if (event.target === permissionOverlay) closePermissionPanel(); });
 adminOverlay?.addEventListener('click', event => {
   if (event.target === adminOverlay) closeAdminPanel();
 });

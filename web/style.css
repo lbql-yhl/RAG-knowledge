@@ -296,9 +296,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .admin-user-main strong { overflow: hidden; color: #243453; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .admin-user-main span { color: #7a879d; font-size: 11px; }
 .admin-user-action { flex: 0 0 auto; }
-.admin-reset-btn { padding: 7px 10px; border: 1px solid #c9d3ea; border-radius: 8px; color: #5268c7; background: #f8faff; font: inherit; font-size: 11px; cursor: pointer; }
+.admin-user-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.admin-reset-btn, .admin-delete-btn { padding: 7px 10px; border: 1px solid #c9d3ea; border-radius: 8px; color: #5268c7; background: #f8faff; font: inherit; font-size: 11px; cursor: pointer; }
 .admin-reset-btn:hover { border-color: #8fa4ed; color: #3e59bc; background: #eef2ff; }
-.admin-reset-btn:disabled { opacity: .55; cursor: wait; }
+.admin-delete-btn { border-color: #f0c5cc; color: #a53f50; background: #fff8f9; }
+.admin-delete-btn:hover { border-color: #dc8c99; color: #8e2639; background: #fdecef; }
+.admin-reset-btn:disabled, .admin-delete-btn:disabled { opacity: .55; cursor: wait; }
 .admin-role { display: inline-flex; padding: 5px 8px; border-radius: 999px; color: #5d6b87; background: #edf1fb; font-size: 10px; font-weight: 700; }
 .admin-empty { padding: 22px; color: #7a879d; border: 1px dashed #d6deed; border-radius: 12px; text-align: center; font-size: 12px; }
 @media (max-width: 760px) { .admin-user-row { align-items: flex-start; flex-direction: column; } .admin-user-action, .admin-reset-btn { width: 100%; } }
@@ -360,7 +363,7 @@ body { font-size: 16px; }
 .admin-users-state { font-size: 13px; }
 .admin-user-main strong { font-size: 14px; }
 .admin-user-main span { font-size: 12px; }
-.admin-reset-btn { font-size: 12px; }
+.admin-reset-btn, .admin-delete-btn { font-size: 12px; }
 .admin-role { font-size: 11px; }
 .admin-empty { font-size: 13px; }
 
@@ -411,4 +414,27 @@ body { text-align: center; }
   #question { font-size: 16px; }
   #ask-btn { width: 100%; min-height: 46px; font-size: 16px; }
   .input-meta { align-items: center; }
+}
+
+/* Permission center */
+.permission-modal { max-width: 760px; }
+.admin-section-title { margin: 22px 0 10px; color: var(--ink-900, #182033); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.permission-list { display: grid; gap: 10px; }
+.permission-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 16px; border: 1px solid rgba(68, 85, 120, .14); border-radius: 14px; background: rgba(247, 249, 253, .75); }
+.permission-row > div:first-child { display: grid; gap: 5px; text-align: left; }
+.permission-row strong { color: var(--ink-900, #182033); font-size: 15px; }
+.permission-row span { color: var(--ink-500, #71809b); font-size: 12px; line-height: 1.45; }
+.permission-row > div:last-child { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.permission-status, .permission-label { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.permission-status.approved { color: #16735b; background: #e2f6ee; }
+.permission-status.pending { color: #9b6a13; background: #fff1cf; }
+.permission-label { display: none; }
+.permission-request-btn, .admin-approve-btn, .admin-reject-btn { border: 0; border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.permission-request-btn, .admin-approve-btn { color: #fff; background: var(--blue-600, #5675f6); }
+.permission-request-btn:hover, .admin-approve-btn:hover { filter: brightness(.95); }
+.admin-reject-btn { color: #9e4851; background: #fbe7ea; }
+.permission-admin-row .admin-user-action { display: flex; gap: 6px; }
+@media (max-width: 640px) {
+  .permission-row { align-items: flex-start; flex-direction: column; }
+  .permission-row > div:last-child { width: 100%; justify-content: flex-end; }
 }

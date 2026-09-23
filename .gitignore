@@ -14,3 +14,17 @@ venv/
 # Local browser QA artifacts
 /docs/chrome-profile-*/
 /docs/ui-redesign-*.png
+
+# Public sample libraries generated for this project
+!/docs/运维/
+!/docs/运维/**
+!/docs/人工智能/
+!/docs/人工智能/**
+!/docs/开发/
+!/docs/开发/**
+!/docs/运营/
+!/docs/运营/**
+!/docs/hr/
+!/docs/hr/**
+!/docs/HR/
+!/docs/HR/**

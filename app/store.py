@@ -1,5 +1,5 @@
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, FieldCondition, Filter, FilterSelector, MatchValue, VectorParams
+from qdrant_client.models import Distance, FieldCondition, Filter, FilterSelector, MatchAny, MatchValue, VectorParams
 
 from . import config
 
@@ -28,13 +28,17 @@ def upsert(points):
     client.upsert(collection_name=config.COLLECTION_NAME, points=points)
 
 
-def search(query_vector, top_k):
+def search(query_vector, top_k, libraries=None):
     client = get_client()
     ensure_collection()
+    query_filter = None
+    if libraries:
+        query_filter = Filter(must=[FieldCondition(key="library", match=MatchAny(any=list(libraries)))])
     res = client.query_points(
         collection_name=config.COLLECTION_NAME,
         query=query_vector,
         limit=top_k,
+        query_filter=query_filter,
         with_payload=True,
     )
     return res.points

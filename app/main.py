@@ -43,13 +43,14 @@ class SyncRequest(BaseModel):
     source_dir: str
 
 
+class PermissionReviewRequest(BaseModel):
+    status: str
+
+
 def _set_session(response: Response, user_id: int):
     response.set_cookie(
-        config.SESSION_COOKIE,
-        db.create_session(user_id),
-        httponly=True,
-        samesite="lax",
-        max_age=14 * 24 * 60 * 60,
+        config.SESSION_COOKIE, db.create_session(user_id), httponly=True,
+        samesite="lax", max_age=14 * 24 * 60 * 60,
     )
 
 
@@ -64,6 +65,15 @@ def admin_user(user=Depends(current_user)):
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return user
+
+
+def _has_library(user, library):
+    return user["role"] == "admin" or db.has_permission(user["id"], library)
+
+
+def _require_library(user, library):
+    if not _has_library(user, library):
+        raise HTTPException(status_code=403, detail=f"你没有“{library}”知识库权限，请先申请并等待管理员审批")
 
 
 @app.get("/")
@@ -109,9 +119,36 @@ def quota(user=Depends(current_user)):
     return db.quota_status(user["id"])
 
 
+@app.get("/api/permissions")
+def permissions(user=Depends(current_user)):
+    statuses = db.permission_statuses(user["id"])
+    return {"catalog": db.list_permissions(), "permissions": statuses, "approved": db.approved_permissions(user["id"]), "is_admin": user["role"] == "admin"}
+
+
+@app.post("/api/permissions/{permission_key}/request")
+def request_permission(permission_key: str, user=Depends(current_user)):
+    item = db.request_permission(user["id"], permission_key)
+    if item is None:
+        raise HTTPException(status_code=404, detail="权限不存在")
+    return {"ok": True, "request": item, "permissions": db.permission_statuses(user["id"])}
+
+
 @app.get("/api/admin/users")
 def admin_users(_admin=Depends(admin_user)):
     return {"users": db.list_users()}
+
+
+@app.get("/api/admin/permission-requests")
+def admin_permission_requests(_admin=Depends(admin_user)):
+    return {"requests": db.list_permission_requests()}
+
+
+@app.post("/api/admin/permission-requests/{request_id}")
+def review_permission(request_id: int, req: PermissionReviewRequest, admin=Depends(admin_user)):
+    result = db.review_permission(request_id, req.status, admin["id"])
+    if result is None:
+        raise HTTPException(status_code=404, detail="权限申请不存在，或审批状态不合法")
+    return {"ok": True, "request": result}
 
 
 @app.post("/api/admin/users/{user_id}/reset-quota")
@@ -127,13 +164,31 @@ def admin_reset_quota(user_id: int, _admin=Depends(admin_user)):
     return {"ok": True, "user": {**target, "quota": db.quota_status(user_id)}}
 
 
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(user_id: int, admin=Depends(admin_user)):
+    result = db.delete_user(user_id, admin["id"])
+    messages = {
+        "not_found": (404, "用户不存在"),
+        "self": (400, "不能删除当前登录的管理员账号"),
+        "admin": (400, "不能通过此入口删除管理员账号"),
+    }
+    if result in messages:
+        status, detail = messages[result]
+        raise HTTPException(status_code=status, detail=detail)
+    return {"ok": True, "deleted_user_id": user_id}
+
+
 @app.post("/api/ask")
 def api_ask(req: AskRequest, user=Depends(current_user)):
-    if not config.DEEPSEEK_API_KEY:
-        raise HTTPException(status_code=400, detail="未配置 DEEPSEEK_API_KEY")
     question = req.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="问题不能为空")
+    # 没有任何已审批知识库时直接拒答，不消耗用户的 AI 咨询额度。
+    if not db.approved_permissions(user["id"]):
+        result = rag.ask(question, user["id"])
+        result["quota"] = db.quota_status(user["id"])
+        return result
+
     quota_info = db.consume_quota(user["id"])
     if quota_info is None:
         raise HTTPException(
@@ -141,7 +196,10 @@ def api_ask(req: AskRequest, user=Depends(current_user)):
             detail=f"今日咨询次数已用完（每天最多 {config.DAILY_ASK_LIMIT} 次），请明天再来。",
             headers={"Retry-After": "3600"},
         )
-    result = rag.ask(question, user["id"])
+    try:
+        result = rag.ask(question, user["id"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     result["quota"] = quota_info
     return result
 
@@ -166,34 +224,41 @@ def feedback(req: FeedbackRequest, user=Depends(current_user)):
     return {"ok": True, "learning": learning}
 
 
-@app.get("/api/docs")
-def api_docs(_user=Depends(current_user)):
+def _doc_tree(user):
     docs_dir = Path(config.DOCS_DIR)
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     def walk(dirpath):
-        dirs = []
-        files = []
-        for e in sorted(dirpath.iterdir()):
-            if e.is_dir():
-                child = walk(e)
+        dirs, files = [], []
+        for entry in sorted(dirpath.iterdir()):
+            if entry.is_dir():
+                child = walk(entry)
                 if child["dirs"] or child["files"]:
                     dirs.append(child)
-            elif e.suffix.lower() == ".md":
-                files.append({"path": e.relative_to(docs_dir).as_posix(), "name": e.stem})
+            elif entry.suffix.lower() == ".md":
+                path = entry.relative_to(docs_dir).as_posix()
+                library = ingest.library_for_source(path)
+                if _has_library(user, library):
+                    files.append({"path": path, "name": entry.stem, "library": library})
         return {"name": dirpath.name, "dirs": dirs, "files": files}
 
-    return {"tree": walk(docs_dir)}
+    return walk(docs_dir)
+
+
+@app.get("/api/docs")
+def api_docs(user=Depends(current_user)):
+    return {"tree": _doc_tree(user), "libraries": db.permission_statuses(user["id"]), "approved": db.approved_permissions(user["id"])}
 
 
 @app.get("/api/doc/{path:path}")
-def api_doc(path: str, _user=Depends(current_user)):
+def api_doc(path: str, user=Depends(current_user)):
     docs_dir = Path(config.DOCS_DIR).resolve()
     full = (docs_dir / path).resolve()
     if not full.is_relative_to(docs_dir) or not full.exists() or full.suffix.lower() != ".md":
         raise HTTPException(status_code=404, detail="文档不存在")
+    _require_library(user, ingest.library_for_source(path))
     content = full.read_text(encoding="utf-8")
-    return {"path": path, "content": content, "html": md_render.render(content)}
+    return {"path": path, "library": ingest.library_for_source(path), "content": content, "html": md_render.render(content)}
 
 
 def _resolve_doc(path):
@@ -207,19 +272,20 @@ def _resolve_doc(path):
 
 
 @app.post("/api/doc")
-def create_doc(req: DocRequest, _user=Depends(current_user)):
+def create_doc(req: DocRequest, user=Depends(current_user)):
     path = req.path.strip().strip("/")
     if not path:
         raise HTTPException(status_code=400, detail="路径不能为空")
     if not path.lower().endswith(".md"):
         path += ".md"
+    _require_library(user, ingest.library_for_source(path))
     full = _resolve_doc(path)
     if full.exists():
         raise HTTPException(status_code=409, detail="文档已存在")
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(req.content, encoding="utf-8")
     chunks = ingest.ingest_one(path, req.content)
-    return {"path": path, "chunks": chunks}
+    return {"path": path, "library": ingest.library_for_source(path), "chunks": chunks}
 
 
 @app.put("/api/doc/{path:path}")
@@ -258,13 +324,14 @@ async def upload_docs(files: list[UploadFile] = File(...), dir: str = Form(""), 
         if not name or not name.lower().endswith(".md"):
             continue
         dest = target_dir / name
+        rel = dest.relative_to(docs_dir).as_posix()
+        _require_library(user, ingest.library_for_source(rel))
         if dest.exists() and user["role"] != "admin":
             raise HTTPException(status_code=409, detail="普通用户只能创建新文档，不能覆盖已有文档")
         content = (await f.read()).decode("utf-8")
         dest.write_text(content, encoding="utf-8")
-        rel = dest.relative_to(docs_dir).as_posix()
         chunks = await run_in_threadpool(ingest.ingest_one, rel, content)
-        uploaded.append({"path": rel, "chunks": chunks})
+        uploaded.append({"path": rel, "library": ingest.library_for_source(rel), "chunks": chunks})
     return {"uploaded": uploaded}
 
 

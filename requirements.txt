@@ -7,3 +7,4 @@ python-dotenv>=1.0
 markdown>=3.6
 pymdown-extensions>=10.0
 pygments>=2.17
+langgraph>=0.2
