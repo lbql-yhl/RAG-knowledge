@@ -91,13 +91,23 @@ def _source_label(item):
     return f"{item['source']}" + (f" > {item['heading']}" if item.get("heading") else "")
 
 
-def _refusal(question, user_id, libraries, reason):
-    answer = "当前授权知识库没有足够依据，暂不作答，请申请对应知识库权限或联系管理员。"
+def _refusal(question, user_id, libraries, reason, retrieval=None):
+    messages = {
+        "no_approved_permission": (
+            "当前账号还没有任何已审批的知识库权限，暂不作答。"
+            "请先申请对应知识库权限，或联系管理员审批。"
+        ),
+        "no_grounded_evidence": (
+            "已授权知识库中没有检索到足够匹配的文档依据，暂不作答。"
+            "请换用文档中的关键词或补充更具体的问题。"
+        ),
+    }
+    answer = messages.get(reason, "当前授权知识库没有足够依据，暂不作答。")
     answer_id = db.create_answer(user_id, question, answer, "[]")
     return {
         "answer_id": answer_id, "answer": answer, "answer_html": md_render.render(answer), "sources": [],
         "memory_active": False, "grounded": False, "refusal_reason": reason,
-        "retrieval": {"libraries": libraries, "vector_hits": 0, "bm25_hits": 0, "reranked": 0},
+        "retrieval": retrieval or {"libraries": libraries, "vector_hits": 0, "bm25_hits": 0, "reranked": 0},
     }
 
 
@@ -111,7 +121,16 @@ def _ask_legacy(question, user_id):
     vector_evidence = any((item.get("vector_score") or 0) >= config.MIN_VECTOR_SCORE for item in top)
     bm25_evidence = any((item.get("bm25_score") or 0) < -0.05 and _lexical_score(question, item["text"]) >= 0.18 for item in top)
     if not top or not (vector_evidence or bm25_evidence):
-        return _refusal(question, user_id, libraries, "no_grounded_evidence")
+        return _refusal(
+            question, user_id, libraries, "no_grounded_evidence",
+            {
+                "libraries": libraries,
+                "vector_hits": len([x for x in ranked if x.get("vector_score") is not None]),
+                "bm25_hits": len([x for x in ranked if x.get("bm25_score") is not None]),
+                "reranked": len(ranked),
+                "top_k": len(top),
+            },
+        )
     sources = []
     context_parts = []
     for index, item in enumerate(top, start=1):
@@ -222,11 +241,19 @@ def _graph_ground(state):
         for item in top
     )
     if not top or not (vector_evidence or bm25_evidence):
+        retrieval = {
+            "libraries": state["libraries"],
+            "vector_hits": len([x for x in state.get("ranked", []) if x.get("vector_score") is not None]),
+            "bm25_hits": len([x for x in state.get("ranked", []) if x.get("bm25_score") is not None]),
+            "reranked": len(state.get("ranked", [])),
+            "top_k": len(top),
+        }
         return {
             "stop": True,
             "refusal_reason": "no_grounded_evidence",
             "result": _refusal(
-                state["question"], state["user_id"], state["libraries"], "no_grounded_evidence"
+                state["question"], state["user_id"], state["libraries"],
+                "no_grounded_evidence", retrieval,
             ),
         }
 
