@@ -53,6 +53,7 @@ graph TB
 | --- | --- |
 | 后端框架 | FastAPI + Uvicorn |
 | RAG 框架 | LangGraph（authorize → hybrid retrieve → ground → generate → persist；可选一次 query rewrite） |
+| 提示词编排 | LangChain Core（`ChatPromptTemplate`） |
 | 向量数据库 | Qdrant（本地模式） |
 | 嵌入模型 | BGE-small-zh-v1.5（fastembed） |
 | 重排模型 | BGE-reranker-v2-m3（Cross-Encoder） |
