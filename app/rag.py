@@ -91,6 +91,45 @@ def _source_label(item):
     return f"{item['source']}" + (f" > {item['heading']}" if item.get("heading") else "")
 
 
+def _has_grounded_evidence(question, top):
+    vector_evidence = any((item.get("vector_score") or 0) >= config.MIN_VECTOR_SCORE for item in top)
+    bm25_evidence = any(
+        (item.get("bm25_score") or 0) < -0.05 and _lexical_score(question, item["text"]) >= 0.18
+        for item in top
+    )
+    return bool(top and (vector_evidence or bm25_evidence))
+
+
+def _rewrite_query(question):
+    """Return one bounded retrieval-only query rewrite; never generate an answer here."""
+    try:
+        rewritten = llm.generate(
+            "你是企业知识库检索查询改写器。只输出一条简短、保留原意的检索查询；"
+            "不要回答问题，不要添加原问题没有的事实。",
+            f"原问题：{question}\n请改写为更适合知识库检索的一句话：",
+        ).strip()
+    except Exception:
+        return ""
+    rewritten = rewritten.splitlines()[0].strip().strip("\"'`“”‘’ ") if rewritten else ""
+    for prefix in ("改写问题：", "检索查询：", "查询："):
+        if rewritten.startswith(prefix):
+            rewritten = rewritten[len(prefix):].strip()
+    if not rewritten or len(rewritten) > 240 or rewritten == question.strip():
+        return ""
+    return rewritten
+
+
+def _retrieval_metrics(libraries, ranked, top, query_rewrites=0):
+    return {
+        "libraries": libraries,
+        "vector_hits": len([item for item in ranked if item.get("vector_score") is not None]),
+        "bm25_hits": len([item for item in ranked if item.get("bm25_score") is not None]),
+        "reranked": len(ranked),
+        "top_k": len(top),
+        "query_rewrites": query_rewrites,
+    }
+
+
 def _refusal(question, user_id, libraries, reason, retrieval=None):
     messages = {
         "no_approved_permission": (
@@ -118,18 +157,17 @@ def _ask_legacy(question, user_id):
 
     ranked = _hybrid_search(question, libraries)
     top = ranked[: config.RERANK_TOP_K]
-    vector_evidence = any((item.get("vector_score") or 0) >= config.MIN_VECTOR_SCORE for item in top)
-    bm25_evidence = any((item.get("bm25_score") or 0) < -0.05 and _lexical_score(question, item["text"]) >= 0.18 for item in top)
-    if not top or not (vector_evidence or bm25_evidence):
+    rewrite_count = 0
+    if not _has_grounded_evidence(question, top):
+        rewritten = _rewrite_query(question) if config.RAG_QUERY_REWRITE_LIMIT else ""
+        if rewritten:
+            rewrite_count += 1
+            ranked = _hybrid_search(rewritten, libraries)
+            top = ranked[: config.RERANK_TOP_K]
+    if not _has_grounded_evidence(question, top):
         return _refusal(
             question, user_id, libraries, "no_grounded_evidence",
-            {
-                "libraries": libraries,
-                "vector_hits": len([x for x in ranked if x.get("vector_score") is not None]),
-                "bm25_hits": len([x for x in ranked if x.get("bm25_score") is not None]),
-                "reranked": len(ranked),
-                "top_k": len(top),
-            },
+            _retrieval_metrics(libraries, ranked, top, rewrite_count),
         )
     sources = []
     context_parts = []
@@ -204,6 +242,9 @@ except ImportError:  # 允许旧环境在未安装 langgraph 时使用兼容回�
 
 class RagState(TypedDict, total=False):
     question: str
+    retrieval_query: str
+    rewrite_count: int
+    needs_rewrite: bool
     user_id: int
     libraries: list[str]
     ranked: list[dict]
@@ -229,31 +270,27 @@ def _graph_authorize(state):
 
 
 def _graph_retrieve(state):
-    ranked = _hybrid_search(state["question"], state["libraries"])
+    query = state.get("retrieval_query") or state["question"]
+    ranked = _hybrid_search(query, state["libraries"])
     return {"ranked": ranked, "top": ranked[: config.RERANK_TOP_K]}
 
 
 def _graph_ground(state):
     top = state.get("top", [])
-    vector_evidence = any((item.get("vector_score") or 0) >= config.MIN_VECTOR_SCORE for item in top)
-    bm25_evidence = any(
-        (item.get("bm25_score") or 0) < -0.05 and _lexical_score(state["question"], item["text"]) >= 0.18
-        for item in top
-    )
-    if not top or not (vector_evidence or bm25_evidence):
-        retrieval = {
-            "libraries": state["libraries"],
-            "vector_hits": len([x for x in state.get("ranked", []) if x.get("vector_score") is not None]),
-            "bm25_hits": len([x for x in state.get("ranked", []) if x.get("bm25_score") is not None]),
-            "reranked": len(state.get("ranked", [])),
-            "top_k": len(top),
-        }
+    if not _has_grounded_evidence(state["question"], top):
+        if state.get("rewrite_count", 0) < config.RAG_QUERY_REWRITE_LIMIT:
+            return {"needs_rewrite": True, "stop": False}
         return {
             "stop": True,
+            "needs_rewrite": False,
             "refusal_reason": "no_grounded_evidence",
             "result": _refusal(
                 state["question"], state["user_id"], state["libraries"],
-                "no_grounded_evidence", retrieval,
+                "no_grounded_evidence",
+                _retrieval_metrics(
+                    state["libraries"], state.get("ranked", []), top,
+                    state.get("rewrite_count", 0),
+                ),
             ),
         }
 
@@ -274,7 +311,32 @@ def _graph_ground(state):
         context_parts.append(
             f"[{index}]【知识库: {item.get('library', '')} | 来源: {_source_label(item)}】\n{item['text']}"
         )
-    return {"sources": sources, "context": "\n\n---\n\n".join(context_parts), "stop": False}
+    return {
+        "sources": sources,
+        "context": "\n\n---\n\n".join(context_parts),
+        "stop": False,
+        "needs_rewrite": False,
+    }
+
+
+def _graph_rewrite(state):
+    rewritten = _rewrite_query(state["question"])
+    if not rewritten:
+        result = _refusal(
+            state["question"], state["user_id"], state["libraries"],
+            "no_grounded_evidence",
+            _retrieval_metrics(
+                state["libraries"], state.get("ranked", []), state.get("top", []),
+                state.get("rewrite_count", 0),
+            ),
+        )
+        return {"stop": True, "needs_rewrite": False, "result": result}
+    return {
+        "retrieval_query": rewritten,
+        "rewrite_count": state.get("rewrite_count", 0) + 1,
+        "needs_rewrite": False,
+        "stop": False,
+    }
 
 
 def _graph_generate(state):
@@ -306,18 +368,25 @@ def _graph_persist(state):
             "sources": sources,
             "memory_active": bool(state.get("memory")),
             "grounded": True,
-            "retrieval": {
-                "libraries": state["libraries"],
-                "vector_hits": len([x for x in state.get("ranked", []) if x.get("vector_score") is not None]),
-                "bm25_hits": len([x for x in state.get("ranked", []) if x.get("bm25_score") is not None]),
-                "reranked": len(state.get("ranked", [])),
-                "top_k": len(state.get("top", [])),
-            },
+            "retrieval": _retrieval_metrics(
+                state["libraries"], state.get("ranked", []), state.get("top", []),
+                state.get("rewrite_count", 0),
+            ),
         }
     }
 
 
 def _route_after_check(state):
+    return "stop" if state.get("stop") else "continue"
+
+
+def _route_after_ground(state):
+    if state.get("stop"):
+        return "stop"
+    return "rewrite" if state.get("needs_rewrite") else "continue"
+
+
+def _route_after_rewrite(state):
     return "stop" if state.get("stop") else "continue"
 
 
@@ -329,12 +398,17 @@ def _build_rag_graph():
         graph.add_node("authorize", _graph_authorize)
         graph.add_node("retrieve", _graph_retrieve)
         graph.add_node("ground", _graph_ground)
+        graph.add_node("rewrite", _graph_rewrite)
         graph.add_node("generate", _graph_generate)
         graph.add_node("persist", _graph_persist)
         graph.add_edge(START, "authorize")
         graph.add_conditional_edges("authorize", _route_after_check, {"stop": END, "continue": "retrieve"})
         graph.add_edge("retrieve", "ground")
-        graph.add_conditional_edges("ground", _route_after_check, {"stop": END, "continue": "generate"})
+        graph.add_conditional_edges(
+            "ground", _route_after_ground,
+            {"stop": END, "rewrite": "rewrite", "continue": "generate"},
+        )
+        graph.add_conditional_edges("rewrite", _route_after_rewrite, {"stop": END, "continue": "retrieve"})
         graph.add_edge("generate", "persist")
         graph.add_edge("persist", END)
         return graph.compile()

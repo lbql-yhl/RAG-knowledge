@@ -18,6 +18,8 @@ graph TB
     subgraph RAG["LangGraph RAG 管道"]
         P1["authorize 授权"] --> P2["retrieve 检索"]
         P2 --> P3["ground 证据门槛"]
+        P3 -.->|可选：查询改写（默认关闭）| RW["rewrite query"]
+        RW --> P2
         P3 --> P4["generate 生成"]
         P4 --> P5["persist 持久化"]
     end
@@ -50,7 +52,7 @@ graph TB
 | 层 | 技术 |
 | --- | --- |
 | 后端框架 | FastAPI + Uvicorn |
-| RAG 框架 | LangGraph（authorize → retrieve → ground → generate → persist 线性管道） |
+| RAG 框架 | LangGraph（authorize → hybrid retrieve → ground → generate → persist；可选一次 query rewrite） |
 | 向量数据库 | Qdrant（本地模式） |
 | 嵌入模型 | BGE-small-zh-v1.5（fastembed） |
 | 重排模型 | BGE-reranker-v2-m3（Cross-Encoder） |
@@ -62,7 +64,7 @@ graph TB
 - **混合检索**：向量 + BM25 → RRF 融合 → Cross-Encoder 重排 top-3
 - **证据门槛**：检索分低于阈值的片段直接丢弃，无依据时诚实拒答而非编造
 - **强制引用**：生成的每个事实陈述都标注来源编号，可直接跳转到对应段落
-- **反幻觉工作流**：`DIFY-WORKFLOW-GUIDE.md` 提供了 grade / rewrite / verify / revise 的显式校验工作流设计，用于进一步降低幻觉
+- **可选 Agentic RAG**：将 `RAG_QUERY_REWRITE_LIMIT` 设为 `1` 后，检索证据不足时最多改写查询一次并重试；默认值为 `0`，保持当前生产检索行为不变。改写不替代权限与证据规则，也不会扩展授权知识库范围
 
 ## 快速开始
 
@@ -107,7 +109,6 @@ app/                 FastAPI 后端、认证、SQLite 与 LangGraph RAG 管道
 web/                 前端（HTML / CSS / JS + 江城圆体字体）
 scripts/             文档索引脚本
 docs/                Markdown 知识库文档
-DIFY-WORKFLOW-GUIDE.md  Dify 反幻觉工作流搭建指南
 .impeccable.md       设计上下文与设计决策
 .env.example         环境变量模板
 run_server.bat       一键启动脚本
